@@ -14,6 +14,7 @@ src/pi_meter_imp.cpp \
 src/pi_learn_imp.cpp \
 src/pi_mc_imp.cpp \
 src/pi_clone_imp.cpp \
+src/pi_runtime_reconfig_imp.cpp \
 src/common.h \
 src/common.cpp \
 src/action_helpers.h \

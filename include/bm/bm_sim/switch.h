@@ -862,7 +862,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 
-   // This function aims to:
+  // This function aims to:
   // 1. To be called by mt_runtime_reconfig
   // 2. To be used in tests for the convenience of getting commands directly
   int
@@ -894,6 +894,427 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     contexts.at(cxt_id).print_runtime_cfg(ofs);
 
     std::cout << "table reconfig successfully" << std::endl;
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+  
+  private:
+  // These three functions (convert_id_to_name, dup_check, hash_function_check) 
+  // are originally from context.cpp
+  // They are moved here for the convenience of gRPC runtime reconfiguartion
+  
+  // helper function for FlexCore
+  // It will return 0, if success
+  // Otherwise, return 1 if the id is unfound, or return 2 if the prefix is wrong
+  int 
+  convert_id_to_name(std::unordered_map<std::string, std::string> &id2newNodeName, 
+      std::string *out, std::string *in, int size) {
+    for (int i = 0; i < size; i++) {
+      if (in[i] == "null") {
+        out[i] = "";
+        continue;
+      }
+      const std::string prefix = in[i].substr(0, 3);
+      const std::string actual_name = in[i].substr(4);
+      if (prefix == "new"
+          || prefix == "flx") {
+        if (id2newNodeName.find(in[i]) == id2newNodeName.end()) {
+          BMLOG_ERROR("Error: cannot find the id {} from id2newNodeName", in[i]);
+          return 1;
+        }
+        out[i] = id2newNodeName[in[i]];
+      } else if (prefix == "old") {
+        out[i] = actual_name;
+      } else {
+        BMLOG_ERROR("Error: prefix {} has no match", prefix);
+        return 2;
+      }
+    }
+
+    return 0;
+  }
+
+  // helper function for FlexCore
+  int
+  dup_check(const std::unordered_map<std::string, std::string> &id2newNodeName, 
+      const std::string &name) {
+    if (id2newNodeName.find(name) != id2newNodeName.end()) {
+      BMLOG_ERROR("Error: Duplicated id {} from id2newNodeName", name);
+      return 1;
+    }
+
+    return 0;
+  }
+
+  int 
+  hash_function_check(const std::string& name) {
+    if (!CalculationsMap::get_instance()->get_copy(name)) {
+      BMLOG_ERROR("Error: can't find the hash function by name: {}", name);
+      return 1;
+    }
+
+    return 0; 
+  }
+  
+  public:
+
+  int 
+  mt_runtime_reconfig_init_p4objects_new(cxt_id_t cxt_id, 
+                                         const char* p4objects_new_json) {
+    std::istringstream json_ss(p4objects_new_json);
+    if (!json_ss) {
+      BMLOG_ERROR("JSON stream can't be opened when initiating p4objects_new");
+      return static_cast<int>(RuntimeReconfigErrorCode::OPEN_JSON_STREAM_FAIL);
+    }
+
+    auto& p4objects_new = contexts.at(cxt_id).p4objects_new;
+    p4objects_new = std::make_shared<P4Objects>(std::cout, true);
+    int status = p4objects_new->init_objects(&json_ss, 
+                                             get_lookup_factory(), 
+                                             contexts.at(cxt_id).device_id, 
+                                             cxt_id, 
+                                             contexts.at(cxt_id).notifications_transport,
+                                             required_fields,
+                                             arith_objects);
+
+    if (status) return static_cast<int>(RuntimeReconfigErrorCode::P4OBJECTS_INIT_FAIL);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_insert_table(cxt_id_t cxt_id, 
+                                   const char* pipeline_name, 
+                                   const char* table_name) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = table_name;
+
+    auto& context = contexts.at(cxt_id);
+
+    const std::string prefix = items[0].substr(0, 3);
+    const std::string actual_name = items[0].substr(4);
+    if (prefix != "new") {
+      BMLOG_ERROR("Error: inserted table should only have prefix 'new_', but you enter {}", items[0]);
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    if (dup_check(context.id2newNodeName, items[0])) {
+      return static_cast<int>(RuntimeReconfigErrorCode::DUP_CHECK_ERROR);
+    }
+
+    context.id2newNodeName[items[0]] = 
+      context.p4objects_rt->insert_match_table_rt(context.p4objects_new, pipeline, actual_name, true);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int mt_runtime_reconfig_change_table(cxt_id_t cxt_id,
+                                       const char* pipeline_name,
+                                       const char* table_name,
+                                       const char* edge_name,
+                                       const char* table_name_next) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = table_name;
+    items[1] = table_name_next;
+    items[2] = edge_name;
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 2);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    context.p4objects_rt->change_table_next_node_rt(pipeline, vals[0], items[2], vals[1]);
+  
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_delete_table(cxt_id_t cxt_id,
+                                   const char* pipeline_name,
+                                   const char* table_name) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = table_name;
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 1);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+
+    context.p4objects_rt->delete_match_table_rt(pipeline, vals[0]);
+  }
+
+  int
+  mt_runtime_reconfig_insert_conditional(cxt_id_t cxt_id,
+                                         const char* pipeline_name,
+                                         const char* branch_name) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = branch_name;
+
+    auto& context = contexts.at(cxt_id);
+
+    const std::string prefix = items[0].substr(0, 3);
+    const std::string actual_name = items[0].substr(4);
+    if (prefix != "new") {
+      BMLOG_ERROR("Error: inserted cond should only have prefix 'new_', but you enter {}", items[0]);
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    if (dup_check(context.id2newNodeName, items[0])) {
+      return static_cast<int>(RuntimeReconfigErrorCode::DUP_CHECK_ERROR);
+    }
+    context.id2newNodeName[items[0]] = context.p4objects_rt->insert_conditional_rt(context.p4objects_new, pipeline, actual_name, true);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_change_conditional(cxt_id_t cxt_id, 
+                                         const char* pipeline_name,
+                                         const char* branch_name,
+                                         bool true_or_false_next,
+                                         const char* node_name) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = branch_name;
+    items[1] = node_name;
+    items[2] = true_or_false_next ? "true_next" : "false_next";
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 2);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    context.p4objects_rt->change_conditional_next_node_rt(pipeline, vals[0], items[2], vals[1]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_delete_conditional(cxt_id_t cxt_id,
+                                         const char* pipeline_name,
+                                         const char* branch_name) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = branch_name;
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 1);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+
+    context.p4objects_rt->delete_conditional_rt(pipeline, vals[0]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_insert_flex(cxt_id_t cxt_id,
+                                  const char* pipeline_name,
+                                  const char* node_name,
+                                  const char* true_next_node,
+                                  const char* false_next_node) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = node_name;
+    items[1] = true_next_node;
+    items[2] = false_next_node;
+
+    auto& context = contexts.at(cxt_id);
+
+    const std::string prefix = items[0].substr(0, 3);
+    const std::string actual_name = items[0].substr(4);
+    if (prefix != "flx") {
+      BMLOG_ERROR("Error: inserted flex should only have prefix 'flx_', but you enter {}", items[0]);
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items+1, 2);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    context.id2newNodeName[items[0]] = context.p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_change_flex(cxt_id_t cxt_id,
+                                  const char* pipeline_name,
+                                  const char* flx_name,
+                                  bool true_or_false_next,
+                                  const char* node_next) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = flx_name;
+    items[1] = node_next;
+    items[2] = true_or_false_next ? "true_next" : "false_next";
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 2);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    context.p4objects_rt->change_conditional_next_node_rt(pipeline, vals[0], items[2], vals[1]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_delete_flex(cxt_id_t cxt_id,
+                                  const char* pipeline_name,
+                                  const char* flx_name) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = flx_name;
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 1);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+
+    context.p4objects_rt->delete_flex_rt(pipeline, vals[0]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_insert_register_array(cxt_id_t cxt_id,
+                                            const char* register_array_name,
+                                            const uint32_t register_array_size,
+                                            const uint32_t register_array_bitwidth) {
+    std::string items[3], vals[3];
+    items[0] = register_array_name;
+    vals[0] = std::to_string(register_array_size);
+    vals[1] = std::to_string(register_array_bitwidth);
+
+    auto& context = contexts.at(cxt_id);
+
+    const std::string prefix = items[0].substr(0, 3);
+    const std::string actual_name = items[0].substr(4);
+    if (prefix != "new") {
+      BMLOG_ERROR("Error: inserted register_array should only have prefix 'new_', but you enter {}", items[0]);
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    if (dup_check(context.id2newNodeName, items[0])) {
+      return static_cast<int>(RuntimeReconfigErrorCode::DUP_CHECK_ERROR);
+    }
+    context.id2newNodeName[items[0]] = context.p4objects_rt->insert_register_array_rt(actual_name, vals[0], vals[1]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_change_register_array(cxt_id_t cxt_id,
+                                            const char* register_array_name,
+                                            const uint32_t change_type,
+                                            const uint32_t new_value) {
+    std::string items[3], vals[3];
+    items[0] = register_array_name;
+    items[1] = std::to_string(new_value);
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 1);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+
+    if (change_type == 0) {
+      context.p4objects_rt->change_register_array_size_rt(vals[0], items[1]);
+    } else if (change_type == 1) {
+      context.p4objects_rt->change_register_array_bitwidth_rt(vals[0], items[1]);
+    } else {
+      BMLOG_ERROR("Error: invalid change_type when changing register_array {}", register_array_name);
+      return static_cast<int>(RuntimeReconfigErrorCode::INVALID_COMMAND_ERROR);
+    }
+    
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_delete_register_array(cxt_id_t cxt_id,
+                                            const char* register_array_name) {
+    std::string items[3], vals[3];
+    items[0] = register_array_name;
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 1);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+
+    context.p4objects_rt->delete_register_array_rt(vals[0]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
+  }
+
+  int
+  mt_runtime_reconfig_trigger(cxt_id_t cxt_id,
+                              bool on_or_off) {
+    auto& context = contexts.at(cxt_id);
+    if (on_or_off) {
+      context.p4objects_rt->flex_trigger_rt(true);
+    } else {
+      context.p4objects_rt->flex_trigger_rt(false);
+    }
+  }
+
+  int
+  mt_runtime_reconfig_change_init(cxt_id_t cxt_id,
+                                  const char* pipeline_name,
+                                  const char* table_name_next) {
+    std::string pipeline(pipeline_name);
+
+    std::string items[3], vals[3];
+    items[0] = table_name_next;
+
+    auto& context = contexts.at(cxt_id);
+
+    int convert_id_return_code = convert_id_to_name(context.id2newNodeName, vals, items, 1);
+    if (convert_id_return_code == 1) {
+      return static_cast<int>(RuntimeReconfigErrorCode::UNFOUND_ID_ERROR);
+    } else if (convert_id_return_code == 2) {
+      return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
+    }
+    context.p4objects_rt->change_init_node_rt(pipeline, vals[0]);
+
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 

@@ -16,6 +16,7 @@ enum class RuntimeReconfigErrorCode {
   INVALID_COMMAND_ERROR,
   INVALID_HASH_FUNCTION_NAME_ERROR,
   OPEN_OUTPUT_FILE_FAIL,
+  OPEN_JSON_STREAM_FAIL,
 };
 
 }  // namespace bm

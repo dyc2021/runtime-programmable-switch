@@ -174,7 +174,11 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
   if (status) return RuntimeReconfigErrorCode::P4OBJECTS_INIT_FAIL;
   
   std::string line;
-  std::unordered_map<std::string, std::string> id2newNodeName;
+  
+  // Yicun Duan: I move this to context.h to let it be an object in context, since I think
+  // this data might also be necessary for the next reconfiguration operation.
+  // std::unordered_map<std::string, std::string> id2newNodeName;
+
   std::string op;
   std::string target;
   std::string pipeline;
@@ -315,7 +319,7 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
       }
       int convert_id_return_code = convert_id_to_name(id2newNodeName, vals, items, 1);
       if (convert_id_return_code == 1) {
-          return RuntimeReconfigErrorCode::UNFOUND_ID_ERROR;
+        return RuntimeReconfigErrorCode::UNFOUND_ID_ERROR;
       } else if (convert_id_return_code == 2) {
         return RuntimeReconfigErrorCode::PREFIX_ERROR;
       }

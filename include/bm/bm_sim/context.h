@@ -533,6 +533,8 @@ class Context final {
   std::shared_ptr<P4Objects> p4objects_rt{nullptr};
   std::shared_ptr<P4Objects> p4objects_new{nullptr};
 
+  std::unordered_map<std::string, std::string> id2newNodeName{};
+
   std::unordered_map<std::type_index, std::shared_ptr<void> > components{};
 
   std::shared_ptr<TransportIface> notifications_transport{nullptr};

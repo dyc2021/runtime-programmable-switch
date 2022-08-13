@@ -35,6 +35,7 @@
 #include <exception>
 #include <algorithm>
 
+#include "jsoncpp/json.h"
 #include "crc_map.h"
 
 namespace bm {
@@ -931,7 +932,7 @@ P4Objects::init_parsers(const Json::Value &cfg_root, InitState *init_state) {
 
   {
     // create map for updating json for runtime_CLI
-    Json::Value &cfg_parsers = this->cfg_root["parsers"];
+    Json::Value &cfg_parsers = (*(this->cfg_root))["parsers"];
     for (auto &cfg_parser : cfg_parsers) {
       const string parser_name = cfg_parser["name"].asString();
       parseStateIdCount[parser_name] = 0;
@@ -1457,7 +1458,7 @@ void
 P4Objects::init_register_arrays(const Json::Value &cfg_root) {
   {
     // create map for updating json for runtime_CLI
-    Json::Value &cfg_register_arrays = this->cfg_root["register_arrays"];
+    Json::Value &cfg_register_arrays = (*(this->cfg_root))["register_arrays"];
     for (auto &cfg_register_array : cfg_register_arrays) {
       const string register_array_name = cfg_register_array["name"].asString();
       map_json_value("register_array", register_array_name, &cfg_register_array);
@@ -1483,7 +1484,7 @@ P4Objects::init_actions(const Json::Value &cfg_root) {
 
   {
     // create map for updating json for runtime_CLI
-    Json::Value &cfg_actions = this->cfg_root["actions"];
+    Json::Value &cfg_actions = (*(this->cfg_root))["actions"];
     for (auto &cfg_action : cfg_actions) {
       p4object_id_t action_id = cfg_action["id"].asInt();
       map_json_value("action", action_id, &cfg_action);
@@ -1637,7 +1638,7 @@ P4Objects::init_pipelines(const Json::Value &cfg_root,
 
   {
     // create map for updating json for runtime_CLI
-    Json::Value &cfg_pipelines = this->cfg_root["pipelines"];
+    Json::Value &cfg_pipelines = (*(this->cfg_root))["pipelines"];
     for (auto &cfg_pipeline : cfg_pipelines) {
       const string pipeline_name = cfg_pipeline["name"].asString();
       auto &cfg_tables = cfg_pipeline["tables"];
@@ -2214,10 +2215,10 @@ P4Objects::init_objects(std::istream *is,
   conditionalIdCount = 0;
   conditionalNameMax = 0;
   registerArrayIdCount = 0;
-  Json::Value cfg_root;
-  (*is) >> cfg_root;
+  Json::Value* cfg_root = new Json::Value();
+  (*is) >> (*cfg_root);
 
-  prepare_flex_hdr_parser(cfg_root);
+  prepare_flex_hdr_parser(*cfg_root);
 
   this->cfg_root = cfg_root;
 
@@ -2233,22 +2234,22 @@ P4Objects::init_objects(std::istream *is,
   InitState init_state;
 
   try {
-    check_json_version(cfg_root);
+    check_json_version(*cfg_root);
 
-    init_enums(cfg_root);
+    init_enums(*cfg_root);
 
-    init_header_types(cfg_root);
+    init_header_types(*cfg_root);
 
-    init_headers(cfg_root);
+    init_headers(*cfg_root);
 
-    init_header_stacks(cfg_root);
+    init_header_stacks(*cfg_root);
 
-    init_header_unions(cfg_root, &init_state);
+    init_header_unions(*cfg_root, &init_state);
 
-    init_header_union_stacks(cfg_root, &init_state);
+    init_header_union_stacks(*cfg_root, &init_state);
 
-    if (cfg_root.isMember("field_aliases")) {
-      const auto &cfg_field_aliases = cfg_root["field_aliases"];
+    if (cfg_root->isMember("field_aliases")) {
+      const auto &cfg_field_aliases = (*cfg_root)["field_aliases"];
 
       for (const auto &cfg_alias : cfg_field_aliases) {
         const auto from = cfg_alias[0].asString();
@@ -2263,38 +2264,38 @@ P4Objects::init_objects(std::istream *is,
       }
     }
 
-    init_extern_instances(cfg_root);
+    init_extern_instances(*cfg_root);
 
-    init_parse_vsets(cfg_root);
+    init_parse_vsets(*cfg_root);
 
-    init_errors(cfg_root);  // parser errors
+    init_errors(*cfg_root);  // parser errors
 
-    init_parsers(cfg_root, &init_state);
+    init_parsers(*cfg_root, &init_state);
 
-    init_deparsers(cfg_root);
+    init_deparsers(*cfg_root);
 
-    init_calculations(cfg_root);
+    init_calculations(*cfg_root);
 
-    init_counter_arrays(cfg_root);
+    init_counter_arrays(*cfg_root);
 
-    init_meter_arrays(cfg_root, &init_state);
+    init_meter_arrays(*cfg_root, &init_state);
 
-    init_register_arrays(cfg_root);
+    init_register_arrays(*cfg_root);
 
-    init_actions(cfg_root);
+    init_actions(*cfg_root);
 
     ageing_monitor = AgeingMonitorIface::make(
         device_id, cxt_id, notifications_transport);
 
-    init_pipelines(cfg_root, lookup_factory, &init_state);
+    init_pipelines(*cfg_root, lookup_factory, &init_state);
 
-    init_checksums(cfg_root);
+    init_checksums(*cfg_root);
 
     learn_engine = LearnEngineIface::make(device_id, cxt_id);
 
-    init_learn_lists(cfg_root);
+    init_learn_lists(*cfg_root);
 
-    init_field_lists(cfg_root);
+    init_field_lists(*cfg_root);
 
 
     // invoke init() for extern instances, we do this at the very end in case
@@ -2310,8 +2311,8 @@ P4Objects::init_objects(std::istream *is,
 
   // force arith fields
 
-  if (cfg_root.isMember("force_arith")) {
-    const Json::Value &cfg_force_arith = cfg_root["force_arith"];
+  if (cfg_root->isMember("force_arith")) {
+    const Json::Value &cfg_force_arith = (*cfg_root)["force_arith"];
 
     for (const auto &cfg_field : cfg_force_arith) {
       const auto field = field_info(cfg_field[0].asString(),
@@ -2340,7 +2341,7 @@ P4Objects::init_objects(std::istream *is,
     enable_arith(header_id);
   }
 
-  parse_config_options(cfg_root);
+  parse_config_options(*cfg_root);
 
   return 0;
 }
@@ -2692,7 +2693,7 @@ P4Objects::add_json_value(const std::string &type, int id,
     if (cfg_actions_map.find(id) != cfg_actions_map.end()) {
       std::cout << "add_json_value: duplicated action id: " << id << std::endl;
     } else {
-      Json::Value &added = cfg_root["actions"].append(val);
+      Json::Value &added = (*cfg_root)["actions"].append(val);
       map_json_value("action", id, &added);
     }
   } else {
@@ -2734,7 +2735,7 @@ P4Objects::add_json_value(const std::string &type, const std::string &name,
       std::cout << "add_json_value: duplicated register_array name: " << name << std::endl;
       BMLOG_ERROR("add_json_value: duplicated register_array name: {}", name);
     } else {
-      Json::Value& added = cfg_root["register_arrays"].append(val);
+      Json::Value& added = (*cfg_root)["register_arrays"].append(val);
       map_json_value("register_array", name, &added);
     }
   } else {
@@ -2777,11 +2778,11 @@ P4Objects::remove_json_value(const std::string &type, const std::string &name) {
       BMLOG_ERROR("remove_json_value: no register_array name: {}", name);
     } else {
       Json::ArrayIndex register_array_index = 0;
-      for (auto& cfg_register_array : cfg_root["register_arrays"]) {
+      for (auto& cfg_register_array : (*cfg_root)["register_arrays"]) {
         if (cfg_register_array["name"] == name) {
           Json::Value removed;
           // please note that "removeIndex" will reallocate the cfg_root["register_arrays"] after the remove operation
-          cfg_root["register_arrays"].removeIndex(register_array_index, &removed);
+          (*cfg_root)["register_arrays"].removeIndex(register_array_index, &removed);
           break;
         }
 
@@ -2792,7 +2793,7 @@ P4Objects::remove_json_value(const std::string &type, const std::string &name) {
       // (1) we need to remove the deleted register_array with name "name"
       // (2) underlying memory of cfg_root["register_arrays"] is changed, due to the effect of "removeIndex" in previous steps
       cfg_register_arrays_map.erase(name);
-      for (auto& cfg_register_array : cfg_root["register_arrays"]) {
+      for (auto& cfg_register_array : (*cfg_root)["register_arrays"]) {
         cfg_register_arrays_map[cfg_register_array["name"].asString()] = &cfg_register_array;
       }
     }
@@ -2976,7 +2977,7 @@ P4Objects::get_json_value(const std::string &type, const std::string &name) {
 }
 void
 P4Objects::print_cfg(std::ostream &os) {
-  os << Json::FastWriter().write(cfg_root) << std::endl;
+  os << Json::FastWriter().write(*cfg_root) << std::endl;
 }
 
 const std::string

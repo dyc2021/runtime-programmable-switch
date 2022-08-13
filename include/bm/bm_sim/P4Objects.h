@@ -50,14 +50,14 @@
 #include "control_action.h"
 #include "device_id.h"
 
-#include "jsoncpp/json.h"
+// #include "jsoncpp/json.h"
 
-// // forward declaration of Json::Value
-// namespace Json {
-// 
-// class Value;
-// 
-// }  // namespace Json
+// forward declaration of Json::Value
+namespace Json {
+
+class Value;
+
+}  // namespace Json
 
 namespace bm {
 
@@ -354,7 +354,7 @@ class P4Objects {
   void print_cfg(std::ostream &os);
 
   const Json::Value& get_cfg() {
-    return cfg_root;
+    return *cfg_root;
   }
 
  private:
@@ -629,7 +629,7 @@ class P4Objects {
   bool verbose_output;
 
   // FlexCore's runtime reconfig
-  Json::Value cfg_root;
+  Json::Value* cfg_root;
   int tableIdCount;
   int actionIdCount;
   int conditionalIdCount;

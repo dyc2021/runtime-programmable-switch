@@ -171,7 +171,7 @@ TEST_F(RuntimeTableReconfigP4ObjectsTest, InsertCheck) {
 
     for (const auto& cfg_action_id : (*added_tabl_json_value_in_cfg)["action_ids"]) {
         ASSERT_TRUE((size_t) cfg_action_id.asInt() >= ori_actions_num && 
-            (size_t) cfg_action_id.asInt() < ori_actions_num + added_tabl_ori_next_nodes_num);
+            (size_t) cfg_action_id.asInt() < (ori_actions_num + added_tabl_ori_next_nodes_num));
     }
 
     if (match_table->get_has_next_node_hit()) {

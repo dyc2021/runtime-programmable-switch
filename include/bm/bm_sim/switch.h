@@ -1052,6 +1052,8 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     }
 
     context.p4objects_rt->delete_match_table_rt(pipeline, vals[0]);
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 
   int
@@ -1294,6 +1296,8 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     } else {
       context.p4objects_rt->flex_trigger_rt(false);
     }
+
+    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 
   int

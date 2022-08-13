@@ -14,6 +14,8 @@
 
 #include "simple_switch.h"
 
+#include "jsoncpp/json.h"
+
 #include "utils.h"
 
 namespace fs = boost::filesystem;

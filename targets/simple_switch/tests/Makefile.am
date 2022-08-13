@@ -11,6 +11,7 @@ AM_CPPFLAGS += \
 -DTESTDATADIR=\"$(srcdir)/testdata\"
 LDADD = $(builddir)/../libsimpleswitch.la \
 $(top_builddir)/third_party/gtest/libgtest.la \
+$(top_builddir)/third_party/jsoncpp/libjson.la \
 $(top_builddir)/src/bm_apps/libbmapps.la \
 -lboost_filesystem
 

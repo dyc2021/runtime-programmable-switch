@@ -5,8 +5,8 @@
 - Add new functions to bmv2:
     - `insert register_array <name> <size> <width>`
     - `delete register_array <name>`
-    - `change register_array_size <size>`
-    - `change register_array_bitwidth <width>`
+    - `change register_array_size <name> <size>`
+    - `change register_array_bitwidth <name> <width>`
 
 - New unit tests:
     - `test_runtime_register_reconfig_commands`

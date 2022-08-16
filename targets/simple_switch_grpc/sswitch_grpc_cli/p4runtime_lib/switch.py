@@ -316,7 +316,7 @@ class SwitchConnection(object):
             runtime_reconfig_content.trigger_entry.on_or_off = True if parsed_cmd.action_arguments[0] == "on" else False
 
         else:
-            raise P4RuntimeReconfigError("Can't parse the command, this shouldn't happend, please check RuntimeReconfigCommandParser")
+            raise P4RuntimeReconfigError("Can't parse the command, this shouldn't happen, please check RuntimeReconfigCommandParser")
 
         if dry_run:
             print("P4Runtime Reconfig Request: ", request)

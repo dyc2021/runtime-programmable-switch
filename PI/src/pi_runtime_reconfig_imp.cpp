@@ -271,4 +271,19 @@ pi_status_t _pi_runtime_reconfig_change_init(pi_session_handle_t session_handle,
     return PI_STATUS_SUCCESS;
 }
 
+pi_status_t _pi_runtime_reconfig_read_json(pi_session_handle_t session_handle,
+                                           pi_dev_tgt_t dev_tgt,
+                                           char* p4objects_json) {
+    _BM_UNUSED(session_handle);
+
+    const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
+    assert(p4info != nullptr);
+
+    auto error_code = pibmv2::switch_->mt_runtime_reconfig_read_json(0, p4objects_json);
+    if (error_code != 0)
+        return convert_error_code(error_code);
+    
+    return PI_STATUS_SUCCESS;
+}
+
 }

@@ -1339,9 +1339,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   mt_runtime_reconfig_read_json(cxt_id_t cxt_id,
                                 char* p4objects_json) {
     auto& context = contexts.at(cxt_id);
-    std::ostringstream p4objects_json_ostream;
-    context.p4objects_rt->print_cfg(p4objects_json_ostream);
-    sprintf(p4objects_json, p4objects_json_ostream.str().c_str());
+    context.p4objects_rt->print_cfg_to_buffer(p4objects_json);
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 

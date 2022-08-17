@@ -352,6 +352,7 @@ class P4Objects {
                             const std::string &dst_state_name);
 
   void print_cfg(std::ostream &os);
+  void print_cfg_to_buffer(char* buffer);
 
   const Json::Value& get_cfg() {
     return *cfg_root;

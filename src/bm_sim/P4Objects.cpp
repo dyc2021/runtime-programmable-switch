@@ -2975,9 +2975,15 @@ P4Objects::get_json_value(const std::string &type, const std::string &name) {
     return nullptr;
   }
 }
+
 void
 P4Objects::print_cfg(std::ostream &os) {
   os << Json::FastWriter().write(*cfg_root) << std::endl;
+}
+
+void
+P4Objects::print_cfg_to_buffer(char* buffer) {
+  sprintf(buffer, Json::FastWriter().write(*cfg_root).c_str());
 }
 
 const std::string

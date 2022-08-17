@@ -281,13 +281,14 @@ pi_status_t _pi_runtime_reconfig_delete_register_array(pi_session_handle_t sessi
 pi_status_t _pi_runtime_reconfig_trigger(pi_session_handle_t session_handle,
                                         pi_dev_tgt_t dev_tgt,
                                         bool on_or_off,
+                                        int trigger_number,
                                         char* p4objects_json_buffer) {
     _BM_UNUSED(session_handle);
 
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_trigger(0, on_or_off);
+    auto error_code = pibmv2::switch_->mt_runtime_reconfig_trigger(0, on_or_off, trigger_number);
     if (error_code != 0)
         return convert_error_code(error_code);
 

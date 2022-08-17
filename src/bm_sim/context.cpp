@@ -27,6 +27,7 @@
 #include <set>
 #include <string>
 #include <vector>
+#include <limits>
 
 namespace bm {
 
@@ -226,7 +227,27 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
         } else if (convert_id_return_code == 2) {
           return RuntimeReconfigErrorCode::PREFIX_ERROR;
         }
-        id2newNodeName[items[0]] = p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1]);
+        if (dup_check(id2newNodeName, items[0])) {
+          return RuntimeReconfigErrorCode::DUP_CHECK_ERROR;
+        }
+        
+        int func_mount_point_number_value = std::numeric_limits<int>::min();
+        if (actual_name.substr(0, actual_name.find('$')) == "flex_func_mount_point_number_") {
+          size_t first_occurance_of_sign = actual_name.find('$');
+          size_t last_occurance_of_sign = actual_name.find_last_of('$');
+          int func_mount_point_number = std::stoi(actual_name.substr(first_occurance_of_sign + 1, 
+                                                                      last_occurance_of_sign - 
+                                                                      first_occurance_of_sign - 1));
+          if (func_mount_point_number < 0) {
+            BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
+            return RuntimeReconfigErrorCode::INVALID_COMMAND_ERROR;
+          } else {
+            func_mount_point_number_value = func_mount_point_number;
+          }
+        }
+        id2newNodeName[items[0]] = func_mount_point_number_value == std::numeric_limits<int>::min() ?
+                                                   p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], -1) :
+                                                   p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], func_mount_point_number_value);
       } else if (target == "register_array") {
         ss >> items[0] >> vals[0] >> vals[1];
         const std::string prefix = items[0].substr(0, 3);
@@ -303,10 +324,17 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
         return RuntimeReconfigErrorCode::UNSUPPORTED_TARGET_ERROR;
       }
     } else if (op == "trigger") {
+      int func_mount_point_number = std::numeric_limits<int>::min(); // this means invalid
+      // if the command is "trigger on" or "trigger off", func_mount_point_number will stay unchanged
+      ss >> func_mount_point_number;
       if (target == "on") {
-        p4objects_rt->flex_trigger_rt(true);
+        func_mount_point_number == std::numeric_limits<int>::min() ? 
+                                        p4objects_rt->flex_trigger_rt(true) :
+                                        p4objects_rt->flex_trigger_rt(true, func_mount_point_number);
       } else if (target == "off") {
-        p4objects_rt->flex_trigger_rt(false);
+        func_mount_point_number == std::numeric_limits<int>::min() ? 
+                                        p4objects_rt->flex_trigger_rt(false) :
+                                        p4objects_rt->flex_trigger_rt(false, func_mount_point_number);
       } else {
         BMLOG_ERROR("Error: unsupported target for trigger: {}", target);
         return RuntimeReconfigErrorCode::UNSUPPORTED_TARGET_ERROR;

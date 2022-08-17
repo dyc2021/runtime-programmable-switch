@@ -1170,8 +1170,27 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     } else if (convert_id_return_code == 2) {
       return static_cast<int>(RuntimeReconfigErrorCode::PREFIX_ERROR);
     }
-    context.id2newNodeName[items[0]] = context.p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1]);
+    if (dup_check(context.id2newNodeName, items[0])) {
+        return static_cast<int>(RuntimeReconfigErrorCode::DUP_CHECK_ERROR);
+    }
 
+    int func_mount_point_number_value = std::numeric_limits<int>::min();
+    if (actual_name.substr(0, actual_name.find('$')) == "flex_func_mount_point_number_") {
+      size_t first_occurance_of_sign = actual_name.find('$');
+      size_t last_occurance_of_sign = actual_name.find_last_of('$');
+      int func_mount_point_number = std::stoi(actual_name.substr(first_occurance_of_sign + 1, 
+                                                                  last_occurance_of_sign - 
+                                                                  first_occurance_of_sign - 1));
+      if (func_mount_point_number < 0) {
+        BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
+        return static_cast<int>(RuntimeReconfigErrorCode::INVALID_COMMAND_ERROR);
+      } else {
+        func_mount_point_number_value = func_mount_point_number;
+      }
+    }
+    context.id2newNodeName[items[0]] = func_mount_point_number_value == std::numeric_limits<int>::min() ?
+                                                context.p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], -1) :
+                                                context.p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], func_mount_point_number_value);
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 
@@ -1302,12 +1321,13 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
 
   int
   mt_runtime_reconfig_trigger(cxt_id_t cxt_id,
-                              bool on_or_off) {
+                              bool on_or_off,
+                              int trigger_number = -1) {
     auto& context = contexts.at(cxt_id);
     if (on_or_off) {
-      context.p4objects_rt->flex_trigger_rt(true);
+      context.p4objects_rt->flex_trigger_rt(true, trigger_number);
     } else {
-      context.p4objects_rt->flex_trigger_rt(false);
+      context.p4objects_rt->flex_trigger_rt(false, trigger_number);
     }
 
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);

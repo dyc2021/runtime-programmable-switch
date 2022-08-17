@@ -61,13 +61,41 @@ For instance,
     (s1) simple_switch_grpc_cli> insert tabl ingress new_acl
     You can insert a new table acl to s1 (table acl is originally a table in s1's p4objects_new)
 
+::INSTALL_FUNC::
+We enable you to install at most 128 self-defined functions at runtime
+Command `show_program_graph` assists this process
+By invoking this command, you can see a flow diagram of current program installed in this switch
+Please use the names in this flow diagram to decide your mount_point (see below)
+For instance,
+    (s1) simple_switch_grpc_cli> install_func <func_p4_header_file_path> <func_p4_control_block_file_path> <mount_point> <mount_point_number>
+    <func_p4_header_file_path> should point to a file containing the headers you need 
+    (we assume that your provided headers should be the same as those in this connected switch's program)
+    <func_p4_control_block_path> should point to a file containing a single control block
+    (NOTE: scalars are also in the headers, so please check your control block doesn't contain any additional scalar)
+    (you should obey this assumption when doing runtime reconfiguration; we can't ensure the program will not crash if you try to use different headers)
+    <mount_point> should be an edge in program's flow diagram; it should be in the format of <start_node>:<end_node> 
+    (for example, table[old_MyIngress.acl]:conditional[old_MyIngress.node_4]); this will install the function between the <start_node> and <end_node>
+    <mount_point_number> is a convenient representation of mount_point which we will use in `uninstall_func` and `migrate_func`
+    (mount_point_number should be in range [0, 128), and the same number can't be repeatedly used for installing)
+
+::UNINSTALL_FUNC::
+You can uninstall the function previously mounted at a certain mount_point
+For instance,
+    (s1) simple_switch_grapc_cli> uninstall_func <mount_point_number>
+
+::MIGRATE_FUNC::
+We enable you to migrate a certain function in this connected switch to another switch
+For instance,
+    (s1) simple_switch_grpc_cli> migrate_func <mount_point_number_in_this_switch> <mount_point_for_another_switch> <mount_point_number_for_another_switch>
+    (please note that this will not uninstall any function in this switch)
+
 ::NOTES::
 You can use command `list_switches` to see all the switches connected to this CLI
 You can use command `q` or `quit` to quit
 You can enter `h` or `help` to see a brief help message
 To see this detailed help message, please enter `detailed_help`
 Please DONT use `set_forwarding_pipeline_config` twice for a single switch, since our reconfiguration changes switch's program
-but doesn't update CLI's p4info. Using an obsolete p4info is dangerous for `set_forwarding_pipeline_config`
+but doesn't update CLI's p4info, which means that your local p4info might be obsolete
 """ + \
 "=" * 100
 
@@ -205,7 +233,7 @@ def exec_command_loop():
         elif len(parsed_user_input) == 1 and parsed_user_input[0] == "list_switches":
             if len(connections) != 0:
                 for i, connection in enumerate(connections):
-                    print("connection [{}]: Name: {}, Address: {}, device_id: {}, log_file: {}".format(i, 
+                    print("connection [{}]: name: {}, address: {}, device_id: {}, log_file: {}".format(i, 
                                                                                                        connection.name, 
                                                                                                        connection.address, 
                                                                                                        connection.device_id, 

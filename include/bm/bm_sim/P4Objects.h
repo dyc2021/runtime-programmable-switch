@@ -301,6 +301,11 @@ class P4Objects {
                                     const std::string &name,
                                     const std::string &old_next_name,
                                     const std::string &new_next_name);
+  const Json::Value build_flex_func_mount_point_number_json_value(int id,
+                                                                  const std::string &name,
+                                                                  const std::string &old_next_name,
+                                                                  const std::string &new_next_name,
+                                                                  int func_mount_point_number);
   const Json::Value build_register_array_json_value(int id,
                                           const std::string &name,
                                           const std::string &register_array_size,
@@ -316,7 +321,8 @@ class P4Objects {
                                            bool use_null_next = false);
   const std::string insert_flex_rt(const std::string &pipeline_name,
                                    const std::string &old_next_name,
-                                   const std::string &new_next_name);
+                                   const std::string &new_next_name,
+                                   int func_mount_point_number = -1);
   const std::string insert_register_array_rt(const std::string& name,
                                              const std::string& register_array_size,
                                              const std::string& register_array_bitwidth);
@@ -334,7 +340,7 @@ class P4Objects {
                                      const std::string& new_register_array_size);
   void change_register_array_bitwidth_rt(const std::string& name,
                                          const std::string& new_register_array_bitwidth);
-  void flex_trigger_rt(bool on);
+  void flex_trigger_rt(bool on, int trigger_number = -1);
   void delete_flex_rt(const std::string &pipeline_name,
                       const std::string &name);
   void delete_conditional_rt(const std::string &pipeline_name,
@@ -631,6 +637,9 @@ class P4Objects {
 
   // FlexCore's runtime reconfig
   Json::Value* cfg_root;
+
+  const uint32_t max_mount_point_number{128};
+
   int tableIdCount;
   int actionIdCount;
   int conditionalIdCount;
@@ -639,6 +648,7 @@ class P4Objects {
   int conditionalNameMax;
 
   ParseState *flex_init_state;
+  std::unordered_map<uint32_t, ParseState*> flex_func_mount_point_number_parse_states{};
 
   std::unordered_map<int, Json::Value*> cfg_actions_map{};
   std::unordered_map<std::string, Json::Value*> cfg_pipelines_map{};

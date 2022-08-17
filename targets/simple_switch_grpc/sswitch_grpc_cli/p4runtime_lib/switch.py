@@ -57,10 +57,19 @@ class RuntimeReconfigCommandParser:
                 raise P4RuntimeReconfigError("Invalid command: can't recognize action target for delete: {},"
                                              "your action target should be in {}".format(self.action_target, valid_action_targets_for_delete))
 
-        if self.action == "trigger" or self.action == "init_p4objects_new":
+        if self.action == "init_p4objects_new":
             if len(cmd_entries) != 2:
-                raise P4RuntimeReconfigError("Invalid command: `trigger` or `init_p4objects_new` command requires 1 argument")
-            self.action_arguments = cmd_entries[1]
+                raise P4RuntimeReconfigError("Invalid command: `init_p4objects_new` command requires 1 argument")
+            self.action_arguments.append(cmd_entries[1])
+        elif self.action == "trigger":
+            if len(cmd_entries) != 2 or len(cmd_entries) != 3:
+                raise P4RuntimeReconfigError("Invalid command: `trigger` command requires 1 or 2 arguments")
+            
+            if len(cmd_entries) == 2:
+                self.action_arguments.append(cmd_entries[1])
+                self.action_arguments.append("-1")
+            elif len(cmd_entries) == 3:
+                self.action_arguments = cmd_entries[1 : 3]
         else:
             if self.action == "insert":
                 if self.action_target == "tabl" and len(cmd_entries) != 4:
@@ -314,6 +323,7 @@ class SwitchConnection(object):
         elif parsed_cmd.action == "trigger":
             runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.TRIGGER
             runtime_reconfig_content.trigger_entry.on_or_off = True if parsed_cmd.action_arguments[0] == "on" else False
+            runtime_reconfig_content.trigger_entry.trigger_number = int(parsed_cmd.action_arguments[1])
 
         else:
             raise P4RuntimeReconfigError("Can't parse the command, this shouldn't happen, please check RuntimeReconfigCommandParser")

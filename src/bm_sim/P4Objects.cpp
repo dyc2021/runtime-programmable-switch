@@ -977,6 +977,19 @@ P4Objects::init_parsers(const Json::Value &cfg_root, InitState *init_state) {
         flex_init_state = parse_state.get();
       }
 
+      if (parse_state_name.substr(0, parse_state_name.find('$')) == "flex_func_mount_point_number_") {
+        size_t first_occurance_of_sign = parse_state_name.find('$');
+        size_t last_occurance_of_sign = parse_state_name.find_last_of('$');
+        int func_mount_point_number = std::stoi(parse_state_name.substr(first_occurance_of_sign + 1, 
+                                                                    last_occurance_of_sign - 
+                                                                    first_occurance_of_sign - 1));
+        if (func_mount_point_number < 0 || func_mount_point_number >= max_mount_point_number) {
+          BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
+        } else {
+          flex_func_mount_point_number_parse_states[(uint32_t) func_mount_point_number] = parse_state.get();
+        }
+      }
+
       const Json::Value &cfg_parser_ops = cfg_parse_state["parser_ops"];
       for (const auto &cfg_parser_op : cfg_parser_ops) {
         const string op_type = cfg_parser_op["op"].asString();
@@ -3152,11 +3165,23 @@ P4Objects::prepare_flex_hdr_parser(Json::Value &cfg_root) {
   // FlexCore: Prepare flex header
   for (auto &cfg_header_type : cfg_header_types) {
     if (cfg_header_type["name"] == "scalars_0") {
-      std::string s = "[\"flexMetadata.version\", 8, false]";
-      std::stringstream ss(s);
-      Json::Value v;
-      ss >> v;
-      cfg_header_type["fields"].append(v);
+      {
+        std::string s = "[\"flexMetadata.version\", 8, false]";
+        std::stringstream ss(s);
+        Json::Value v;
+        ss >> v;
+        cfg_header_type["fields"].append(v);
+      }
+
+      for (uint32_t i = 0; i < max_mount_point_number; i++) {
+        char output[1024];
+        sprintf(output, "[\"flexMetadata.func_mount_point_number_$%u$_activation\", 8, false]", i);
+        std::stringstream ss(output);
+        Json::Value v;
+        ss >> v;
+        cfg_header_type["fields"].append(v);
+      }
+     
       break;
     }
   }
@@ -3169,50 +3194,100 @@ P4Objects::prepare_flex_hdr_parser(Json::Value &cfg_root) {
   }
   for (auto &cfg_parser : cfg_parsers) {
     std::string orig_init_state_name = "";
-    if (!cfg_parser["init_state"].isNull()) {
-      orig_init_state_name = cfg_parser["init_state"].asString();
+
+    {
+      if (!cfg_parser["init_state"].isNull()) {
+        orig_init_state_name = cfg_parser["init_state"].asString();
+      }
+      static const char s[] = 
+        "{"
+        "  \"name\" : \"flex_start\","
+        "  \"id\" : -1,"
+        "  \"parser_ops\" : ["
+        "    {"
+        "      \"parameters\" : ["
+        "        {"
+        "          \"type\" : \"field\","
+        "          \"value\" : [\"scalars\", \"flexMetadata.version\"]"
+        "        },"
+        "        {"
+        "          \"type\" : \"hexstr\","
+        "          \"value\" : \"0x00\""
+        "        }"
+        "      ],"
+        "      \"op\" : \"set\""
+        "    }"
+        "  ],"
+        "  \"transitions\" : ["
+        "    {"
+        "      \"type\" : \"default\","
+        "      \"value\" : null,"
+        "      \"mask\" : null,"
+        "      \"next_state\" : %s"
+        "    }"
+        "  ],"
+        "  \"transition_key\" : []"
+        "}";
+      char output[2048];
+
+      sprintf(output, s, "flex_func_mount_point_number_$0$_parse");
+
+      std::stringstream ss;
+      Json::Value v;
+      ss << output;
+      ss >> v;
+
+      cfg_parser["parse_states"].append(v);
+      cfg_parser["init_state"] = "flex_start";
     }
-    static const char s[] = 
-      "{"
-      "  \"name\" : \"flex_start\","
-      "  \"id\" : -1,"
-      "  \"parser_ops\" : ["
-      "    {"
-      "      \"parameters\" : ["
-      "        {"
-      "          \"type\" : \"field\","
-      "          \"value\" : [\"scalars\", \"flexMetadata.version\"]"
-      "        },"
-      "        {"
-      "          \"type\" : \"hexstr\","
-      "          \"value\" : \"0x00\""
-      "        }"
-      "      ],"
-      "      \"op\" : \"set\""
-      "    }"
-      "  ],"
-      "  \"transitions\" : ["
-      "    {"
-      "      \"type\" : \"default\","
-      "      \"value\" : null,"
-      "      \"mask\" : null,"
-      "      \"next_state\" : %s"
-      "    }"
-      "  ],"
-      "  \"transition_key\" : []"
-      "}";
-    char output[2048];
+    
+    for(uint32_t i = 0; i < max_mount_point_number; i++) {
+      static const char s[] = 
+        "{"
+        "  \"name\" : \"flex_func_mount_point_number_$%u$_parse\","
+        "  \"id\" : %d,"
+        "  \"parser_ops\" : ["
+        "    {"
+        "      \"parameters\" : ["
+        "        {"
+        "          \"type\" : \"field\","
+        "          \"value\" : [\"scalars\", \"flexMetadata.func_mount_point_number_$%u$_activation\"]"
+        "        },"
+        "        {"
+        "          \"type\" : \"hexstr\","
+        "          \"value\" : \"0x00\""
+        "        }"
+        "      ],"
+        "      \"op\" : \"set\""
+        "    }"
+        "  ],"
+        "  \"transitions\" : ["
+        "    {"
+        "      \"type\" : \"default\","
+        "      \"value\" : null,"
+        "      \"mask\" : null,"
+        "      \"next_state\" : %s"
+        "    }"
+        "  ],"
+        "  \"transition_key\" : []"
+        "}";
+      char output[2048];
 
-    std::sprintf(output, s,
-      (orig_init_state_name == "" ? "null" : "\"" + orig_init_state_name + "\"").c_str());
+      
+      if (i < max_mount_point_number - 1) {
+        sprintf(output, s, i, -(i + 2), i, "flex_func_mount_point_number_$" + std::to_string(i + 1) + "$_parse");
+      } else {
+        sprintf(output, s, i, -(i + 2), i,
+          (orig_init_state_name == "" ? "null" : "\"" + orig_init_state_name + "\"").c_str());
+      }
 
-    std::stringstream ss;
-    Json::Value v;
-    ss << output;
-    ss >> v;
+      std::stringstream ss;
+      Json::Value v;
+      ss << output;
+      ss >> v;
 
-    cfg_parser["parse_states"].append(v);
-    cfg_parser["init_state"] = "flex_start";
+      cfg_parser["parse_states"].append(v);
+    }
   }
 }
 
@@ -3265,6 +3340,56 @@ P4Objects::build_flex_json_value(int id,
   return v;
 }
 
+const Json::Value
+P4Objects::build_flex_func_mount_point_number_json_value(int id,
+                                                         const std::string &name,
+                                                         const std::string &old_next_name,
+                                                         const std::string &new_next_name,
+                                                         int func_mount_point_number) {
+  static const char s[] = 
+    "{"
+    "  \"name\" : \"%s\","
+    "  \"id\" : %d,"
+    "  \"source_info\" : {"
+    "    \"filename\" : \"flex\","
+    "    \"line\" : 1,"
+    "    \"column\" : 1,"
+    "    \"source_fragment\" : \"%s\""
+    "  },"
+    "  \"expression\" : {"
+    "    \"type\" : \"expression\","
+    "    \"value\" : {"
+    "      \"op\" : \"==\","
+    "      \"left\" : {"
+    "        \"type\" : \"field\","
+    "        \"value\" : [\"scalars\", \"flexMetadata.func_mount_point_number_$%u$_activation\"]"
+    "      },"
+    "      \"right\" : {"
+    "        \"type\" : \"hexstr\","
+    "        \"value\" : \"0x01\""
+    "      }"
+    "    }"
+    "  },"
+    "  \"false_next\" : %s,"
+    "  \"true_next\" : %s"
+    "}";
+  char output[2048];
+
+  const char *new_next_name_cstr = (new_next_name == "" ? "null" : "\"" + new_next_name + "\"").c_str();
+  const char *old_next_name_cstr = (old_next_name == "" ? "null" : "\"" + old_next_name + "\"").c_str();
+
+  std::sprintf(output, s, name.c_str(), id, name.c_str(), (uint32_t) func_mount_point_number,
+    old_next_name_cstr,
+    new_next_name_cstr);
+
+  std::stringstream ss;
+  Json::Value v;
+  ss << output;
+  ss >> v;
+
+  return v;
+}
+
 const Json::Value 
 P4Objects::build_register_array_json_value(int id,
                                           const std::string &name,
@@ -3299,7 +3424,13 @@ P4Objects::build_register_array_json_value(int id,
 const std::string
 P4Objects::insert_flex_rt(const std::string &pipeline_name, 
     const std::string &old_next_name,
-    const std::string &new_next_name) {
+    const std::string &new_next_name,
+    int func_mount_point_number) {
+  if (func_mount_point_number != -1 && (func_mount_point_number < 0 || func_mount_point_number >= max_mount_point_number)) {
+    BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
+    exit(1);
+  }
+  
   DupIdChecker dup_id_checker_condition("condition");
   if (conditionalIdCount == 0) {
     conditionalIdCount = conditionals_map.size();
@@ -3309,7 +3440,9 @@ P4Objects::insert_flex_rt(const std::string &pipeline_name,
   conditional_name += std::to_string(++conditionalNameMax);
   dup_id_checker_condition.add(conditional_id);
 
-  Json::Value cfg_conditional = build_flex_json_value(conditional_id, conditional_name, old_next_name, new_next_name);
+  Json::Value cfg_conditional = func_mount_point_number == -1 ? 
+                                  build_flex_json_value(conditional_id, conditional_name, old_next_name, new_next_name) :
+                                  build_flex_func_mount_point_number_json_value(conditional_id, conditional_name, old_next_name, new_next_name, func_mount_point_number);
   auto conditional = new Conditional(
     conditional_name, conditional_id, object_source_info(cfg_conditional));
   const auto &cfg_expression = cfg_conditional["expression"];
@@ -3428,14 +3561,22 @@ P4Objects::change_register_array_bitwidth_rt(const std::string& name,
 }
 
 void
-P4Objects::flex_trigger_rt(bool on) {
-  ParserOpSet<Data> *op = (ParserOpSet<Data>*) flex_init_state->get_parser_op(0);
-  if (on) {
-    op->src.set(Data("0x01"));
-    // op->set_src(Data("0x00"));
+P4Objects::flex_trigger_rt(bool on, int trigger_number) {
+  if (trigger_number != -1 && (trigger_number < 0 || trigger_number >= max_mount_point_number)) {
+    BMLOG_ERROR("FlexCore Error: invalid trigger_number {}", trigger_number);
+    exit(1);
   } else {
-    op->src.set(Data("0x00"));
-    // op->set_src(Data("0x01"));
+    ParserOpSet<Data>* op = nullptr;
+    op = trigger_number == -1 ? (ParserOpSet<Data>*) flex_init_state->get_parser_op(0) :
+                                (ParserOpSet<Data>*) flex_func_mount_point_number_parse_states[trigger_number]->get_parser_op(0);
+
+    if (on) {
+      op->src.set(Data("0x01"));
+      // op->set_src(Data("0x00"));
+    } else {
+      op->src.set(Data("0x00"));
+      // op->set_src(Data("0x01"));
+    }
   }
 }
 void

@@ -526,8 +526,13 @@ class Context final {
 
   void send_swap_status_notification(SwapStatus status);
 
+public:
   void print_runtime_cfg(std::ostream& os) {
     p4objects_rt->print_cfg(os);
+  }
+
+  void print_runtime_cfg_to_buffer(char* buffer) {
+    p4objects_rt->print_cfg_to_buffer(buffer);
   }
 
  private:  // data members

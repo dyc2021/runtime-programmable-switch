@@ -1335,14 +1335,6 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 
-  int
-  mt_runtime_reconfig_read_json(cxt_id_t cxt_id,
-                                char* p4objects_json) {
-    auto& context = contexts.at(cxt_id);
-    context.p4objects_rt->print_cfg_to_buffer(p4objects_json);
-    return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
-  }
-
   // ---------- End RuntimeInterface ----------
 
  protected:

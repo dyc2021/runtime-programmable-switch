@@ -983,7 +983,7 @@ P4Objects::init_parsers(const Json::Value &cfg_root, InitState *init_state) {
         int func_mount_point_number = std::stoi(parse_state_name.substr(first_occurance_of_sign + 1, 
                                                                     last_occurance_of_sign - 
                                                                     first_occurance_of_sign - 1));
-        if (func_mount_point_number < 0 || func_mount_point_number >= max_mount_point_number) {
+        if (func_mount_point_number < 0 || (uint32_t) func_mount_point_number >= max_mount_point_number) {
           BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
         } else {
           flex_func_mount_point_number_parse_states[(uint32_t) func_mount_point_number] = parse_state.get();
@@ -3275,7 +3275,7 @@ P4Objects::prepare_flex_hdr_parser(Json::Value &cfg_root) {
 
       
       if (i < max_mount_point_number - 1) {
-        sprintf(output, s, i, -(i + 2), i, "flex_func_mount_point_number_$" + std::to_string(i + 1) + "$_parse");
+        sprintf(output, s, i, -(i + 2), i, ("flex_func_mount_point_number_$" + std::to_string(i + 1) + "$_parse").c_str());
       } else {
         sprintf(output, s, i, -(i + 2), i,
           (orig_init_state_name == "" ? "null" : "\"" + orig_init_state_name + "\"").c_str());
@@ -3426,7 +3426,7 @@ P4Objects::insert_flex_rt(const std::string &pipeline_name,
     const std::string &old_next_name,
     const std::string &new_next_name,
     int func_mount_point_number) {
-  if (func_mount_point_number != -1 && (func_mount_point_number < 0 || func_mount_point_number >= max_mount_point_number)) {
+  if (func_mount_point_number != -1 && (func_mount_point_number < 0 || (uint32_t) func_mount_point_number >= max_mount_point_number)) {
     BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
     exit(1);
   }
@@ -3562,7 +3562,7 @@ P4Objects::change_register_array_bitwidth_rt(const std::string& name,
 
 void
 P4Objects::flex_trigger_rt(bool on, int trigger_number) {
-  if (trigger_number != -1 && (trigger_number < 0 || trigger_number >= max_mount_point_number)) {
+  if (trigger_number != -1 && (trigger_number < 0 || (uint32_t) trigger_number >= max_mount_point_number)) {
     BMLOG_ERROR("FlexCore Error: invalid trigger_number {}", trigger_number);
     exit(1);
   } else {

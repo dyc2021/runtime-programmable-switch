@@ -173,7 +173,10 @@ def generate_uninstall_func_commands(runtime_json_file_path: str, mount_point_nu
     
     # delete nodes
     nodes_to_be_deleted = set()
-    nodes_to_be_deleted.update(list(nx.all_simple_paths(source=true_next_node, target=false_next_node)))
+    for path in list(nx.all_simple_paths(source=true_next_node, target=false_next_node)):
+        nodes_to_be_deleted.update(path)
+
+    nodes_to_be_deleted.remove(false_next_node)
 
     for node in nodes_to_be_deleted:
         node_type = ""

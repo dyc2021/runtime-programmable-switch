@@ -232,19 +232,23 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
         }
         
         int func_mount_point_number_value = std::numeric_limits<int>::min();
-        if (actual_name.substr(0, actual_name.find('$')) == "flex_func_mount_point_number_") {
-          size_t first_occurance_of_sign = actual_name.find('$');
-          size_t last_occurance_of_sign = actual_name.find_last_of('$');
-          int func_mount_point_number = std::stoi(actual_name.substr(first_occurance_of_sign + 1, 
-                                                                      last_occurance_of_sign - 
-                                                                      first_occurance_of_sign - 1));
-          if (func_mount_point_number < 0) {
-            BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
-            return RuntimeReconfigErrorCode::INVALID_COMMAND_ERROR;
-          } else {
-            func_mount_point_number_value = func_mount_point_number;
+        size_t first_occurance_of_sign = actual_name.find('$');
+        size_t last_occurance_of_sign = actual_name.find_last_of('$');
+        if (first_occurance_of_sign != std::string::npos && last_occurance_of_sign != std::string::npos) {
+          if (actual_name.substr(0, first_occurance_of_sign) == "flex_func_mount_point_number_") {
+          
+            int func_mount_point_number = std::stoi(actual_name.substr(first_occurance_of_sign + 1, 
+                                                                        last_occurance_of_sign - 
+                                                                        first_occurance_of_sign - 1));
+            if (func_mount_point_number < 0) {
+              BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
+              return RuntimeReconfigErrorCode::INVALID_COMMAND_ERROR;
+            } else {
+              func_mount_point_number_value = func_mount_point_number;
+            }
           }
         }
+      
         id2newNodeName[items[0]] = func_mount_point_number_value == std::numeric_limits<int>::min() ?
                                                    p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], -1) :
                                                    p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], func_mount_point_number_value);

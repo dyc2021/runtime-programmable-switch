@@ -1,14 +1,47 @@
-# adapted from FlexCore (https://github.com/jiarong0907/FlexCore)
-
 import networkx as nx
 import json
 
 import sys
 import ete3
+import os
+import shutil
 
 from error_utils import P4RuntimeReconfigError
+import matplotlib.pyplot as plt
 
-class RuntimeReconfigGraphManager:
+import p4prototype
+
+def merge_and_compile(header_file_path: str, control_block_file_path: str, output_path: str) -> str:
+    with open(header_file_path, "r") as header_file:
+        header_str = header_file.read()
+    with open(control_block_file_path, "r") as control_block_file:
+        control_block_str = control_block_file.read()
+    control_block_name = control_block_str[control_block_str.find("control") + len("control"), control_block_str.find("(")].strip()
+    
+    merged_str = p4prototype.PROTOTYPE_STR % control_block_name
+    merged_str_hash_code = abs(hash(control_block_name + header_str + control_block_str)) % (10 ** 8)
+    output_folder_name = "header_" + \
+                            os.path.basename(header_file_path) + \
+                                "_control_block_" + os.path.basename(control_block_file_path) + \
+                                    "_" + merged_str_hash_code
+    
+    final_output_path = os.path.join(output_path, output_folder_name)
+    os.makedirs(final_output_path, exist_ok=True)
+    shutil.copyfile(header_file_path, os.path.join(final_output_path, "headers.p4"))
+    shutil.copyfile(header_file_path, os.path.join(final_output_path, "control_block.p4"))
+    merged_file_path = os.path.join(final_output_path, "merged.p4")
+    with open(merged_file_path, "w") as merged_file:
+        merged_file.write(merged_str)
+    compile_return_code = os.system("p4c --arch v1model --target bmv2 -o {} {}".format(final_output_path, merged_file_path))
+    if compile_return_code != 0:
+        raise P4RuntimeReconfigError("Compiling p4 merged file fails")
+
+    return merged_file_path
+
+
+# adapted from FlexCore (https://github.com/jiarong0907/FlexCore)
+
+class ProgramGraphManager:
     def __init__(self):
         self.init_graph: nx.MultiDiGraph = None
         self.cur_graph: nx.MultiDiGraph = None
@@ -110,8 +143,12 @@ class RuntimeReconfigGraphManager:
 
         return True
 
-    def update_graph(self, new_config_json_path):        
-        with open(new_config_json_path) as f:
+    def update_json_file_and_cur_graph(self, new_config_json_path):
+        """
+        Please note that this function will add "myId" field to json file; 
+        To ensure the coherence between updates, please apply this function to json file before using that json file to init switch
+        """        
+        with open(new_config_json_path, "r") as f:
             new_p4json = json.load(f)
 
         pipelines = new_p4json["pipelines"]
@@ -136,7 +173,7 @@ class RuntimeReconfigGraphManager:
 
         for t in ingress["tables"]:
             if self.init_graph is None or \
-                    (t["myId"] in self.init_graph.nodes and self._compare_table(t, self.init_graph.nodes[t["myId"]])):
+                    ("myId" in t and t["myId"] in self.init_graph.nodes and self._compare_table(t, self.init_graph.nodes[t["myId"]])):
                 t["myId"] = "old_"+"t%s" % t["name"]
             else:
                 t["myId"] = "new_"+"t%s" % t["name"]
@@ -146,10 +183,10 @@ class RuntimeReconfigGraphManager:
 
         for c in ingress["conditionals"]:
             if self.init_graph is None or \
-                    (c["myId"] in self.init_graph.nodes and self._compare_conditional(c, self.init_graph.nodes[c["myId"]])):
+                    ("myId" in c and c["myId"] in self.init_graph.nodes and self._compare_conditional(c, self.init_graph.nodes[c["myId"]])):
                 c["myId"] = "old_"+"c%s" % c["name"]
             else:
-                c["myId"] = "new_"+"c%s" % c["name"]
+                c["myId"] = "new_"+"c%s" % c["name"] if "TE" not in c["name"] else "flx_"+"c%s" % c["name"]
 
             graph.add_nodes_from([(c["myId"], c)])
             name2id[c["name"]] = c["myId"]
@@ -191,6 +228,10 @@ class RuntimeReconfigGraphManager:
             self.init_graph = graph
         self.cur_graph = graph
 
+        # update original json file
+        with open(new_config_json_path, "w") as f:
+            json.dump(fp=f, obj=new_p4json)
+
 def graph_name_to_human_readable_name(graph_name: str) -> str:
     # we assume graph names are in the form of "old_<type>xxx" or "new_<type>xxx", <type> = 't' or 'c' or 'a'
     # Or, specially, "old_r" and "old_s"
@@ -227,7 +268,7 @@ def human_readable_name_to_graph_name(human_readable_name: str) -> str:
     else:
         raise P4RuntimeReconfigError("Invalid human readable name: human readable name contains type label [{}] which can't be interpreted".format(type_name))
 
-def display_graph(graph: nx.MultiDiGraph):
+def display_graph_in_command_line(graph: nx.MultiDiGraph):
     # refer to https://stackoverflow.com/questions/51273890/how-to-convert-from-networkx-graph-to-ete3-tree-object
     root = " [root] "
     subtrees = {graph_name_to_human_readable_name(node):ete3.Tree(name=graph_name_to_human_readable_name(node)) for node in graph.nodes()}
@@ -235,6 +276,12 @@ def display_graph(graph: nx.MultiDiGraph):
     tree = subtrees[root]
     print(tree.get_ascii())
 
+def display_graph_using_matplotlib(graph: nx.MultiDiGraph):
+    pos = nx.spring_layout(graph)
+    nx.draw(graph, pos, node_size=1500, with_labels=True)
+    plt.draw()
+    plt.show()
+    # plt.savefig("1.pdf")
 
 
 

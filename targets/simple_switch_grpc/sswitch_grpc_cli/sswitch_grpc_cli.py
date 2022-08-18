@@ -110,6 +110,10 @@ Change to a switch: connect <switch_name_given_by_yourself>
 Init switch: set_forwarding_pipeline_config <p4info_path> <bmv2_json_path>
 Init p4objects_new: init_p4objects_new <bmv2_json_path>
 Runtime reconfiguration: see the README and runtime_register_reconfig_readme.md in our repository
+Show program's flow diagram: show_program_graph
+Install function: install_func <func_p4_header_file_path> <func_p4_control_block_file_path> <mount_point> <mount_point_number>
+Uninstall function: uninstall_func <mount_point_number>
+Migrate function: migrate_func <mount_point_number_in_this_switch> <mount_point_for_another_switch> <mount_point_number_for_another_switch>
 List connected switches: list_switches
 Quit: q or quit
 """

@@ -2763,13 +2763,28 @@ P4Objects::remove_json_value(const std::string &type, const std::string &name) {
     if (cfg_tables_map.find(cfg_table_id) == cfg_tables_map.end()) {
       std::cout << "remove_json_value: no table name: " << cfg_table_id << std::endl;
     } else {
-      Json::Value newArray = Json::arrayValue;
-      for (const auto &cfg_table : *(cfg_pipeline_tables_map[pipeline_name])) {
-        if (cfg_table["name"] != name) {
-          newArray.append(cfg_table);
+      auto& table_array_in_pipeline = *(cfg_pipeline_tables_map[pipeline_name]);
+      Json::ArrayIndex table_index = 0;
+      for (auto& table : table_array_in_pipeline) {
+        if (table["name"].asString() == name) {
+          Json::Value removed;
+          table_array_in_pipeline.removeIndex(table_index, &removed);
+          break;
         }
+        table_index++;
       }
-      (*cfg_pipeline_tables_map[pipeline_name]) = newArray;
+
+      cfg_tables_map.erase(name);
+      for (auto& table : table_array_in_pipeline) {
+          cfg_tables_map[table["name"].asString()] = &table;
+      }
+      // Json::Value newArray = Json::arrayValue;
+      // for (const auto &cfg_table : *(cfg_pipeline_tables_map[pipeline_name])) {
+      //   if (cfg_table["name"] != name) {
+      //     newArray.append(cfg_table);
+      //   }
+      // }
+      // (*cfg_pipeline_tables_map[pipeline_name]) = newArray;
     }
   } else if (type.substr(type.length()-11, 11) == "conditional") {
     const string &pipeline_name = type.substr(0, type.length()-12);
@@ -2777,13 +2792,29 @@ P4Objects::remove_json_value(const std::string &type, const std::string &name) {
     if (cfg_conditionals_map.find(cfg_conditional_id) == cfg_conditionals_map.end()) {
       std::cout << "remove_json_value: no conditional name: " << cfg_conditional_id << std::endl;
     } else {
-      Json::Value newArray = Json::arrayValue;
-      for (const auto &cfg_conditional : *(cfg_pipeline_conditionals_map[pipeline_name])) {
-        if (cfg_conditional["name"] != name) {
-          newArray.append(cfg_conditional);
+      auto& conditional_array_in_pipeline = *(cfg_pipeline_conditionals_map[pipeline_name]);
+      Json::ArrayIndex conditional_index = 0;
+      for (auto& conditional : conditional_array_in_pipeline) {
+        if (conditional["name"].asString() == name) {
+          Json::Value removed;
+          conditional_array_in_pipeline.removeIndex(conditional_index, &removed);
+          break;
         }
+        conditional_index++;
       }
-      (*cfg_pipeline_conditionals_map[pipeline_name]) = newArray;
+
+      cfg_conditionals_map.erase(name);
+      for (auto& conditional : conditional_array_in_pipeline) {
+          cfg_conditionals_map[conditional["name"].asString()] = &conditional;
+      }
+
+      // Json::Value newArray = Json::arrayValue;
+      // for (const auto &cfg_conditional : *(cfg_pipeline_conditionals_map[pipeline_name])) {
+      //   if (cfg_conditional["name"] != name) {
+      //     newArray.append(cfg_conditional);
+      //   }
+      // }
+      // (*cfg_pipeline_conditionals_map[pipeline_name]) = newArray;
     }
   } else if (type == "register_array"){
     if (cfg_register_arrays_map.find(name) == cfg_register_arrays_map.end()) {
@@ -2792,13 +2823,12 @@ P4Objects::remove_json_value(const std::string &type, const std::string &name) {
     } else {
       Json::ArrayIndex register_array_index = 0;
       for (auto& cfg_register_array : (*cfg_root)["register_arrays"]) {
-        if (cfg_register_array["name"] == name) {
+        if (cfg_register_array["name"].asString() == name) {
           Json::Value removed;
           // please note that "removeIndex" will reallocate the cfg_root["register_arrays"] after the remove operation
           (*cfg_root)["register_arrays"].removeIndex(register_array_index, &removed);
           break;
         }
-
         register_array_index++;
       }
 

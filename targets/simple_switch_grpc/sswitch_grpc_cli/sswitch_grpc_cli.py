@@ -86,7 +86,7 @@ For instance,
 ::MIGRATE_FUNC::
 We enable you to migrate a certain function in this connected switch to another switch
 For instance,
-    (s1) simple_switch_grpc_cli> migrate_func <mount_point_number_in_this_switch> <mount_point_for_another_switch> <mount_point_number_for_another_switch>
+    (s1) simple_switch_grpc_cli> migrate_func <mount_point_number_in_this_switch> <another_switch_name> <mount_point_for_another_switch> <mount_point_number_for_another_switch>
     (please note that this will not uninstall any function in this switch)
 
 ::NOTES::
@@ -113,7 +113,7 @@ Runtime reconfiguration: see the README and runtime_register_reconfig_readme.md 
 Show program's flow diagram: show_program_graph
 Install function: install_func <func_p4_header_file_path> <func_p4_control_block_file_path> <mount_point> <mount_point_number>
 Uninstall function: uninstall_func <mount_point_number>
-Migrate function: migrate_func <mount_point_number_in_this_switch> <mount_point_for_another_switch> <mount_point_number_for_another_switch>
+Migrate function: migrate_func <mount_point_number_in_this_switch> <another_switch_name> <mount_point_for_another_switch> <mount_point_number_for_another_switch>
 List connected switches: list_switches
 Quit: q or quit
 """
@@ -224,7 +224,7 @@ def exec_commands(commands: List[str]):
 
 def exec_command_loop():
     print(DETAILED_HELP_MESSAGE)
-    connections = {} # { switch_name: BMV2SwitchConnect object }
+    connections = dict() # { switch_name: BMV2SwitchConnect object }
     cur_connection = None # BMV2SwitchConnect object
     user_input = input("simple_switch_grpc_cli> ")
 

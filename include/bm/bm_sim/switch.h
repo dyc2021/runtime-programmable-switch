@@ -1179,7 +1179,6 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     size_t last_occurance_of_sign = actual_name.find_last_of('$');
     if (first_occurance_of_sign != std::string::npos && last_occurance_of_sign != std::string::npos) {
       if (actual_name.substr(0, first_occurance_of_sign) == "flex_func_mount_point_number_") {
-      
         int func_mount_point_number = std::stoi(actual_name.substr(first_occurance_of_sign + 1, 
                                                                     last_occurance_of_sign - 
                                                                     first_occurance_of_sign - 1));

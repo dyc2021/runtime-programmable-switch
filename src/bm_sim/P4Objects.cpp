@@ -3050,7 +3050,7 @@ P4Objects::insert_match_table_rt(std::shared_ptr<P4Objects> p4objects_new,
   p4objects_new->modify_json_value(pipeline_name+" table", name, "id", table_id);
   p4objects_new->modify_json_value(pipeline_name+" table", name, "name", table_name);
   // add a new field "flex_name" for the convenience of displaying runtime flow diagram
-  p4objects_new->modify_json_value(pipeline_name+" table", name, "flex_name", "new_"+name);
+  p4objects_new->modify_json_value(pipeline_name+" table", name, "flex_name", "new_t"+name);
 
   // FlexCore: For now, we assume keys were already successfully built during init_objects
   // This means the header_id, field_offset of old and new programs are the same
@@ -3178,7 +3178,7 @@ P4Objects::insert_conditional_rt(std::shared_ptr<P4Objects> p4objects_new,
   p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "id", conditional_id);
   p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "name", new_name);
   // add a new field "flex_name" for the convenience of displaying runtime flow diagram
-  p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "flex_name", "new_"+conditional_name);
+  p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "flex_name", "new_c"+conditional_name);
 
   auto get_next_node = [this](const ControlFlowNode *node_in_new)
       -> ControlFlowNode *{
@@ -3233,7 +3233,7 @@ P4Objects::insert_register_array_rt(const std::string &name,
                                                   register_array_size, register_array_bitwidth));
 
   // add a new field "flex_name" for the convenience of displaying runtime flow diagram
-  modify_json_value("register_array", new_register_array_name, "flex_name", "new_"+name);
+  modify_json_value("register_array", new_register_array_name, "flex_name", "new_r"+name);
 
   return new_register_array_name;
 }
@@ -3566,7 +3566,11 @@ P4Objects::change_init_node_rt(const std::string &pipeline_name,
   Pipeline *pipeline = get_pipeline(pipeline_name);
   ControlFlowNode * dst_ptr = dst_node_name == "" ? nullptr : get_control_node_cfg(dst_node_name);
   pipeline->set_first_node(dst_ptr);
-  modify_json_value("pipeline", pipeline_name, "init_table", dst_node_name);
+  if (dst_ptr) {
+    modify_json_value("pipeline", pipeline_name, "init_table", dst_node_name);
+  } else {
+    modify_json_value("pipeline", pipeline_name, "init_table", Json::Value::null);
+  }
 }
 void
 P4Objects::change_table_next_node_rt(const std::string &pipeline_name,
@@ -3577,17 +3581,33 @@ P4Objects::change_table_next_node_rt(const std::string &pipeline_name,
   ControlFlowNode * dst_ptr = dst_node_name == "" ? nullptr : get_control_node_cfg(dst_node_name);
   if (edge_name == "base_default_next") {
     src_match_table->set_next_node_miss_default(dst_ptr);
-    modify_json_value(pipeline_name+" table", src_table_name, edge_name, dst_node_name);
+    if (dst_ptr) {
+      modify_json_value(pipeline_name+" table", src_table_name, edge_name, dst_node_name);
+    } else {
+      modify_json_value(pipeline_name+" table", src_table_name, edge_name, Json::Value::null);
+    }
   } else if (edge_name == "__HIT__") {
     src_match_table->set_next_node_hit(dst_ptr);
-    modify_json_value(pipeline_name+" table", src_table_name, edge_name, dst_node_name);
+    if (dst_ptr) {
+      modify_json_value(pipeline_name+" table", src_table_name, edge_name, dst_node_name);
+    } else {
+      modify_json_value(pipeline_name+" table", src_table_name, edge_name, Json::Value::null);
+    }
   } else if (edge_name == "__MISS__") {
     src_match_table->set_next_node_miss(dst_ptr);
-    modify_json_value(pipeline_name+" table", src_table_name, edge_name, dst_node_name);
+    if (dst_ptr) {
+      modify_json_value(pipeline_name+" table", src_table_name, edge_name, dst_node_name);
+    } else {
+      modify_json_value(pipeline_name+" table", src_table_name, edge_name, Json::Value::null);
+    }
   } else {
     p4object_id_t action_id = get_action(src_table_name, edge_name)->get_id();
     src_match_table->set_next_node(action_id, dst_ptr);
-    modify_json_value(pipeline_name+" table", src_table_name, "next_tables", edge_name, dst_node_name);
+    if (dst_ptr) {
+      modify_json_value(pipeline_name+" table", src_table_name, "next_tables", edge_name, dst_node_name);
+    } else {
+      modify_json_value(pipeline_name+" table", src_table_name, "next_tables", edge_name, Json::Value::null);
+    }
   }
 }
 void
@@ -3599,10 +3619,18 @@ P4Objects::change_conditional_next_node_rt(const std::string &pipeline_name,
   ControlFlowNode * dst_ptr = dst_node_name == "" ? nullptr : get_control_node_cfg(dst_node_name);
   if (edge_name == "true_next") {
     src_conditional->set_next_node_if_true(dst_ptr);
-    modify_json_value(pipeline_name+" conditional", src_conditional_name, edge_name, dst_node_name);
+    if (dst_ptr) {
+      modify_json_value(pipeline_name+" conditional", src_conditional_name, edge_name, dst_node_name);
+    } else {
+      modify_json_value(pipeline_name+" conditional", src_conditional_name, edge_name, Json::Value::null);
+    }
   } else if (edge_name == "false_next") {
     src_conditional->set_next_node_if_false(dst_ptr);
-    modify_json_value(pipeline_name+" conditional", src_conditional_name, edge_name, dst_node_name);
+    if (dst_ptr) {
+      modify_json_value(pipeline_name+" conditional", src_conditional_name, edge_name, dst_node_name);
+    } else {
+      modify_json_value(pipeline_name+" conditional", src_conditional_name, edge_name, Json::Value::null);
+    }
   }
 }
 

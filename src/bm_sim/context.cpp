@@ -250,8 +250,8 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
         }
       
         id2newNodeName[items[0]] = func_mount_point_number_value == std::numeric_limits<int>::min() ?
-                                                   p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], -1) :
-                                                   p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], func_mount_point_number_value);
+                                                   p4objects_rt->insert_flex_rt(pipeline, actual_name, vals[0], vals[1], -1) :
+                                                   p4objects_rt->insert_flex_rt(pipeline, actual_name, vals[0], vals[1], func_mount_point_number_value);
       } else if (target == "register_array") {
         ss >> items[0] >> vals[0] >> vals[1];
         const std::string prefix = items[0].substr(0, 3);

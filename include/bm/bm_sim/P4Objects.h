@@ -291,9 +291,10 @@ class P4Objects {
   void modify_json_value(const std::string &type, const std::string &name,
       const std::string &field_name, const std::string &inner_field_name,
       std::unordered_map<int, int> &action_id_new2comb);
+  template <typename T>
   void modify_json_value(const std::string &type, const std::string &name,
       const std::string &field_name, const std::string &inner_field_name,
-      const std::string &val);
+      const T &val);
   const Json::Value *get_json_value(const std::string &type, int id);
   const Json::Value *get_json_value(const std::string &type, const std::string &name);
   void prepare_flex_hdr_parser(Json::Value &cfg_root);
@@ -320,6 +321,7 @@ class P4Objects {
                                            const std::string &name,
                                            bool use_null_next = false);
   const std::string insert_flex_rt(const std::string &pipeline_name,
+                                   const std::string &name,
                                    const std::string &old_next_name,
                                    const std::string &new_next_name,
                                    int func_mount_point_number = -1);

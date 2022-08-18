@@ -1193,8 +1193,8 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     }
   
     context.id2newNodeName[items[0]] = func_mount_point_number_value == std::numeric_limits<int>::min() ?
-                                                context.p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], -1) :
-                                                context.p4objects_rt->insert_flex_rt(pipeline, vals[0], vals[1], func_mount_point_number_value);
+                                                context.p4objects_rt->insert_flex_rt(pipeline, actual_name, vals[0], vals[1], -1) :
+                                                context.p4objects_rt->insert_flex_rt(pipeline, actual_name, vals[0], vals[1], func_mount_point_number_value);
 
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }

@@ -2915,10 +2915,12 @@ P4Objects::modify_json_value(const std::string &type, const std::string &name,
     std::cout << "modify_json_value: type not supported" << std::endl;
   }
 }
+
+template <typename T>
 void
 P4Objects::modify_json_value(const std::string &type, const std::string &name,
     const std::string &field_name, const std::string &inner_field_name,
-    const std::string &val) {
+    const T &val) {
   if (type.substr(type.length()-5, 5) == "table") {
     const string &pipeline_name = type.substr(0, type.length()-6);
     const string &cfg_table_id = pipeline_name + " " + name;
@@ -3017,6 +3019,8 @@ P4Objects::insert_match_table_rt(std::shared_ptr<P4Objects> p4objects_new,
   match_table->set_name(table_name);
   p4objects_new->modify_json_value(pipeline_name+" table", name, "id", table_id);
   p4objects_new->modify_json_value(pipeline_name+" table", name, "name", table_name);
+  // add a new field "flex_name" for the convenience of displaying runtime flow diagram
+  p4objects_new->modify_json_value(pipeline_name+" table", name, "flex_name", "new_"+name);
 
   // FlexCore: For now, we assume keys were already successfully built during init_objects
   // This means the header_id, field_offset of old and new programs are the same
@@ -3074,6 +3078,12 @@ P4Objects::insert_match_table_rt(std::shared_ptr<P4Objects> p4objects_new,
     table->set_next_node(action_id, next_node);
     add_action_to_table(table_name, action_name, action);
 
+    if (next_node) {
+      modify_json_value(pipeline_name+" table", name, "next_tables", action_name, next_node->get_name());
+    } else {
+      modify_json_value(pipeline_name+" table", name, "next_tables", action_name, Json::Value::null);
+    }
+
     // TODO: For now, we don't support action_profile
     // if (act_prof_name != "")
     //   add_action_to_act_prof(act_prof_name, action_name, action);
@@ -3081,15 +3091,35 @@ P4Objects::insert_match_table_rt(std::shared_ptr<P4Objects> p4objects_new,
   p4objects_new->modify_json_value(pipeline_name+" table", name, "action_ids", action_id_new2comb);
   p4objects_new->modify_json_value(pipeline_name+" table", name, "default_entry", "action_id", action_id_new2comb);
 
+  if (match_table->get_has_next_node_hit()) {
+    const ControlFlowNode* next_node = (use_null_next ? nullptr : get_next_node(match_table->get_next_node_hit()));
+    table->set_next_node_hit(next_node);
+    if (next_node) {
+      p4objects_new->modify_json_value(pipeline_name+" table", name, "__HIT__", next_node->get_name());
+    } else {
+      p4objects_new->modify_json_value(pipeline_name+" table", name, "__HIT__", Json::Value::null);
+    }
+  }
+    
+  if (match_table->get_has_next_node_miss()) {
+    const ControlFlowNode* next_node = (use_null_next ? nullptr : get_next_node(match_table->get_next_node_miss()));
+    table->set_next_node_miss(next_node);
+    if (next_node) {
+      p4objects_new->modify_json_value(pipeline_name+" table", name, "__MISS__", next_node->get_name());
+    } else {
+      p4objects_new->modify_json_value(pipeline_name+" table", name, "__MISS__", Json::Value::null);
+    }
+  }
+
+  const ControlFlowNode* next_node = (use_null_next ? nullptr : get_next_node(match_table->get_next_node_miss()));
+  table->set_next_node_miss_default(next_node);
+  if (next_node) {
+    p4objects_new->modify_json_value(pipeline_name+" table", name, "base_default_next", next_node->get_name());
+  } else {
+    p4objects_new->modify_json_value(pipeline_name+" table", name, "base_default_next", Json::Value::null);
+  }
+
   add_json_value(pipeline_name+" table", table_name, *(p4objects_new->get_json_value(pipeline_name+" table", name)));
-
-  if (match_table->get_has_next_node_hit())
-    table->set_next_node_hit(use_null_next ? nullptr : get_next_node(match_table->get_next_node_hit()));
-  if (match_table->get_has_next_node_miss())
-    table->set_next_node_miss(use_null_next ? nullptr : get_next_node(match_table->get_next_node_miss()));
-
-  table->set_next_node_miss_default(
-      use_null_next ? nullptr : get_next_node(match_table->get_next_node_miss()));
 
   return table_name;
 
@@ -3117,8 +3147,8 @@ P4Objects::insert_conditional_rt(std::shared_ptr<P4Objects> p4objects_new,
   add_conditional(new_name, unique_ptr<Conditional>(conditional));
   p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "id", conditional_id);
   p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "name", new_name);
-
-  add_json_value(pipeline_name+" conditional", new_name, *(p4objects_new->get_json_value(pipeline_name+" conditional", conditional_name)));
+  // add a new field "flex_name" for the convenience of displaying runtime flow diagram
+  p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "flex_name", "new_"+conditional_name);
 
   auto get_next_node = [this](const ControlFlowNode *node_in_new)
       -> ControlFlowNode *{
@@ -3127,8 +3157,24 @@ P4Objects::insert_conditional_rt(std::shared_ptr<P4Objects> p4objects_new,
     return get_control_node_cfg(node_in_new->get_name());
   };
 
-  conditional->set_next_node_if_true(use_null_next ? nullptr : get_next_node(conditional->get_next_node_if_true()));
-  conditional->set_next_node_if_false(use_null_next ? nullptr : get_next_node(conditional->get_next_node_if_false()));
+  ControlFlowNode* next_node_if_true = (use_null_next ? nullptr : get_next_node(conditional->get_next_node_if_true()));
+  ControlFlowNode* next_node_if_false = (use_null_next ? nullptr : get_next_node(conditional->get_next_node_if_false()));
+
+  conditional->set_next_node_if_true(next_node_if_true);
+  if (next_node_if_true) {
+    p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "true_next", next_node_if_true->get_name());
+  } else {
+    p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "true_next", Json::Value::null);
+  }
+
+  conditional->set_next_node_if_false(next_node_if_false);
+  if (next_node_if_false) {
+    p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "false_next", next_node_if_true->get_name());
+  } else {
+    p4objects_new->modify_json_value(pipeline_name+" conditional", conditional_name, "false_next", Json::Value::null);
+  }
+
+  add_json_value(pipeline_name+" conditional", new_name, *(p4objects_new->get_json_value(pipeline_name+" conditional", conditional_name)));
 
   return new_name;
 }
@@ -3137,26 +3183,29 @@ const std::string
 P4Objects::insert_register_array_rt(const std::string &name,
                                     const std::string &register_array_size,
                                     const std::string &register_array_bitwidth) {
-      DupIdChecker dup_id_checker_register_array("register_array");
-      if (registerArrayIdCount == 0) {
-        registerArrayIdCount = register_arrays.size();
-      }
-      p4object_id_t new_register_array_id = registerArrayIdCount++;
-      dup_id_checker_register_array.add(new_register_array_id);
+  DupIdChecker dup_id_checker_register_array("register_array");
+  if (registerArrayIdCount == 0) {
+    registerArrayIdCount = register_arrays.size();
+  }
+  p4object_id_t new_register_array_id = registerArrayIdCount++;
+  dup_id_checker_register_array.add(new_register_array_id);
 
-      std::string new_register_array_name = name + "$" + std::to_string(new_register_array_id);
+  std::string new_register_array_name = name + "$" + std::to_string(new_register_array_id);
 
-      RegisterArray *register_array = new RegisterArray(new_register_array_name, new_register_array_id, 
-                                                        std::stoi(register_array_size), 
-                                                        std::stoi(register_array_bitwidth));
+  RegisterArray *register_array = new RegisterArray(new_register_array_name, new_register_array_id, 
+                                                    std::stoi(register_array_size), 
+                                                    std::stoi(register_array_bitwidth));
 
-      add_register_array(new_register_array_name, unique_ptr<RegisterArray>(register_array));
+  add_register_array(new_register_array_name, unique_ptr<RegisterArray>(register_array));
 
-      add_json_value("register_array", new_register_array_name, 
-                      build_register_array_json_value(new_register_array_id, new_register_array_name, 
-                                                      register_array_size, register_array_bitwidth));
+  add_json_value("register_array", new_register_array_name, 
+                  build_register_array_json_value(new_register_array_id, new_register_array_name, 
+                                                  register_array_size, register_array_bitwidth));
 
-      return new_register_array_name;
+  // add a new field "flex_name" for the convenience of displaying runtime flow diagram
+  modify_json_value("register_array", new_register_array_name, "flex_name", "new_"+name);
+
+  return new_register_array_name;
 }
 
 void
@@ -3423,9 +3472,10 @@ P4Objects::build_register_array_json_value(int id,
 
 const std::string
 P4Objects::insert_flex_rt(const std::string &pipeline_name, 
-    const std::string &old_next_name,
-    const std::string &new_next_name,
-    int func_mount_point_number) {
+                          const std::string &name,
+                          const std::string &old_next_name,
+                          const std::string &new_next_name,
+                          int func_mount_point_number) {
   if (func_mount_point_number != -1 && (func_mount_point_number < 0 || (uint32_t) func_mount_point_number >= max_mount_point_number)) {
     BMLOG_ERROR("FlexCore Error: invalid func_mount_point_number {}", func_mount_point_number);
     exit(1);
@@ -3452,16 +3502,31 @@ P4Objects::insert_flex_rt(const std::string &pipeline_name,
   add_conditional(conditional_name, unique_ptr<Conditional>(conditional));
   add_json_value(pipeline_name+" conditional", conditional_name, cfg_conditional);
 
+  // add a new field "flex_name" for the convenience of displaying runtime flow diagram
+  modify_json_value(pipeline_name+" conditional", conditional_name, "flex_name", "flx_"+name);
+
   const auto &cfg_true_next = cfg_conditional["true_next"];
   const auto &cfg_false_next = cfg_conditional["false_next"];
 
   if (!cfg_true_next.isNull()) {
     auto next_node = get_control_node_cfg(cfg_true_next.asString());
     conditional->set_next_node_if_true(next_node);
+    if (next_node) {
+      modify_json_value(pipeline_name+" conditional", conditional_name, "true_next", next_node->get_name());
+    } else {
+      modify_json_value(pipeline_name+" conditional", conditional_name, "true_next", Json::Value::null);
+    }
+
   }
   if (!cfg_false_next.isNull()) {
     auto next_node = get_control_node_cfg(cfg_false_next.asString());
     conditional->set_next_node_if_false(next_node);
+
+    if (next_node) {
+      modify_json_value(pipeline_name+" conditional", conditional_name, "true_next", next_node->get_name());
+    } else {
+      modify_json_value(pipeline_name+" conditional", conditional_name, "true_next", Json::Value::null);
+    }
   }
   return conditional_name;
 }

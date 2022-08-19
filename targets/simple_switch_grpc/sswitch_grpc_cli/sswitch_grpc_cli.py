@@ -10,8 +10,9 @@ import grpc
 
 import p4runtime_lib.bmv2
 import p4runtime_lib.helper
+import p4runtime_lib
 from p4runtime_lib.switch import RuntimeReconfigCommandParser, ShutdownAllSwitchConnections
-from .p4runtime_lib.error_utils import P4RuntimeReconfigError, P4RuntimeReconfigWarning
+from p4runtime_lib.error_utils import P4RuntimeReconfigError, P4RuntimeReconfigWarning
 from p4runtime_lib import runtime_reconfig_tools
 
 DETAILED_HELP_MESSAGE = \
@@ -340,7 +341,7 @@ class SSwitchGRPCCLI:
         get_error = False
         print(DETAILED_HELP_MESSAGE)
         user_input = self._read_user_input()
-        while user_input != "q" or user_input != "quit":
+        while user_input != "q" and user_input != "quit":
             try:
                 self._exec_one_command(command=user_input)
             except P4RuntimeReconfigWarning as w:
@@ -395,7 +396,7 @@ if __name__ == '__main__':
         print(OUTSIDE_HELP_MESSAGE)
         exit(1)
     
-    if sys.argv[1] == "--script":
+    if len(sys.argv) == 3 and sys.argv[1] == "--script":
         if not os.path.exists(sys.argv[2]):
             print("Can't find the script: {}".format(sys.argv[2]))
             exit(1)

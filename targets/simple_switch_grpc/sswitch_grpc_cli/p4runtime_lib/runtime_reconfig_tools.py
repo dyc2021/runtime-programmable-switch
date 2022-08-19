@@ -8,10 +8,10 @@ import ete3
 import os
 import shutil
 
-from error_utils import P4RuntimeReconfigError
+from .error_utils import P4RuntimeReconfigError
 import matplotlib.pyplot as plt
 
-import p4prototype
+from . import p4prototype
 
 def merge_and_compile(header_file_path: str, control_block_file_path: str, output_path: str) -> str:
     with open(header_file_path, "r") as header_file:

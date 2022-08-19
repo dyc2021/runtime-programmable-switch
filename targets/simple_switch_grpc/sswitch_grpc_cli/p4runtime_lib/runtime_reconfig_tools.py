@@ -278,9 +278,8 @@ class ProgramGraphManager:
         self.init_graph: nx.MultiDiGraph = None
         self.cur_graph: nx.MultiDiGraph = None
 
-    def update_graph(self, new_config_json_file_path):
+    def update_graph(self, new_config_json_file_path: str):
         graph = generate_graph(new_config_json_file_path)
-
         if self.init_graph is None:
             self.init_graph = graph
         self.cur_graph = graph

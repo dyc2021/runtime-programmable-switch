@@ -225,7 +225,7 @@ class SwitchConnection(object):
         else:
             self.client_stub.Write(request)
 
-    def RuntimeReconfig(self, parsed_cmd: RuntimeReconfigCommandParser, dry_run=False):
+    def RuntimeReconfig(self, parsed_cmd: RuntimeReconfigCommandParser, dry_run=False) -> p4runtime_pb2.WriteResponse:
         # We assume that parser has already verified cmd's action, target and the number of arguments
 
         request = p4runtime_pb2.WriteRequest()
@@ -246,9 +246,7 @@ class SwitchConnection(object):
             p4objects_new_json_path = parsed_cmd.action_arguments[0]
             with open(p4objects_new_json_path, "r") as f:
                 init_p4objects_new_entry = p4runtime_pb2.InitP4ObjectsNewEntry()
-                init_p4objects_new_entry.p4objects_new_json = f.read().encode('utf-8')
-                runtime_reconfig_content.init_p4objects_new_entry = \
-                                                    init_p4objects_new_entry.SerializeToString()
+                init_p4objects_new_entry.p4objects_new_json = f.read()
 
         elif parsed_cmd.action == "insert":
             if parsed_cmd.action_target == "tabl":
@@ -330,11 +328,14 @@ class SwitchConnection(object):
 
         if dry_run:
             print("P4Runtime Reconfig Request: ", request)
+            response = None
         else:
             print("Send P4Runtime Reconfig Request:", request)
-            self.client_stub.Write(request)
+            response = self.client_stub.Write(request)
             if parsed_cmd.action == "init_p4objects_new":
                 self.already_init_p4objects_new = True
+
+        return response
 
 class GrpcRequestLogger(grpc.UnaryUnaryClientInterceptor,
                         grpc.UnaryStreamClientInterceptor):

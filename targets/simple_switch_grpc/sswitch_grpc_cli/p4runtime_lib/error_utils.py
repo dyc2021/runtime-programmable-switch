@@ -28,7 +28,11 @@ class P4RuntimeErrorFormatException(Exception):
 
 class P4RuntimeReconfigError(Exception):
     def __init__(self, message):
-        super(P4RuntimeErrorFormatException, self).__init__(message)
+        super(P4RuntimeReconfigError, self).__init__(message)
+
+class P4RuntimeReconfigWarning(Exception):
+    def __init__(self, message) -> None:
+        super(P4RuntimeReconfigWarning, self).__init__(message)
 
 
 # Parse the binary details of the gRPC error. This is required to print some

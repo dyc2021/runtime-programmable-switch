@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
-import argparse
 import os
 import sys
-from time import sleep
-from typing import List
+from typing import Dict, List
 import traceback
 import logging
+import time
 
 import grpc
 
 import p4runtime_lib.bmv2
 import p4runtime_lib.helper
 from p4runtime_lib.switch import RuntimeReconfigCommandParser, ShutdownAllSwitchConnections
-from .p4runtime_lib.error_utils import P4RuntimeReconfigError
+from .p4runtime_lib.error_utils import P4RuntimeReconfigError, P4RuntimeReconfigWarning
+from p4runtime_lib import runtime_reconfig_tools
 
 DETAILED_HELP_MESSAGE = \
 "=" * 100 + \
@@ -73,8 +73,8 @@ For instance,
     <func_p4_control_block_path> should point to a file containing a single control block
     (NOTE: scalars are also in the headers, so please check your control block doesn't contain any additional scalar)
     (you should obey this assumption when doing runtime reconfiguration; we can't ensure the program will not crash if you try to use different headers)
-    <mount_point> should be an edge in program's flow diagram; it should be in the format of <start_node>:<end_node> 
-    (for example, table[old_MyIngress.acl]:conditional[old_MyIngress.node_4]); this will install the function between the <start_node> and <end_node>
+    <mount_point> should be an edge in program's flow diagram; it should be in the format of <start_node>-><end_node> 
+    (for example, table[old_MyIngress.acl]->conditional[old_MyIngress.node_4]); this will install the function between the <start_node> and <end_node>)
     <mount_point_number> is a convenient representation of mount_point which we will use in `uninstall_func` and `migrate_func`
     (mount_point_number should be in range [0, 128), and the same number can't be repeatedly used for installing)
 
@@ -124,6 +124,10 @@ You can start this CLI without any command line argument
 Or, by adding tag `--script <script_path>`, you can directly run a script
 """
 
+OUTPUT_FOLDER = "sswitch_graph_cli_output"
+
+DISPLAY_GRAPH_IN_COMMAND_LINE = True
+
 def printGrpcError(e):
     print("gRPC Error:", e.details(), end=' ')
     status_code = e.code()
@@ -131,234 +135,259 @@ def printGrpcError(e):
     traceback = sys.exc_info()[2]
     print("[%s:%d]" % (traceback.tb_frame.f_code.co_filename, traceback.tb_lineno))
 
-def exec_commands(commands: List[str]):
-    print("Start running script")
+class SSwitchGRPCConnection:
+    def __init__(self, name: str, address: str, device_id: int, proto_dump_file: str) -> None:
+        self.bmv2_connection = p4runtime_lib.bmv2.Bmv2SwitchConnection(name=name, address=address, device_id=device_id, proto_dump_file=proto_dump_file)
+        self.program_graph_manager = runtime_reconfig_tools.ProgramGraphManager()
+        self.latest_config_json_path: str = None
 
-    cur_connection = None # BMV2SwitchConnect object
+class SSwitchGRPCCLI:
+    def __init__(self) -> None:
+        self.connections: Dict[str, SSwitchGRPCConnection] = dict() # { switch_name: SSwitchGRPCConnection }
+        self.cur_connection: SSwitchGRPCConnection = None
+        self.program_graph_manager = runtime_reconfig_tools.ProgramGraphManager()
+        os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-    for i, command in enumerate(commands):
-        print("Execute command [{}]: {}".format(i, command))
+    def _read_user_input(self) -> str:
+        return input("{}simple_switch_grpc_cli> ".format("" if self.cur_connection is None else "({}) ".format(self.cur_connection.name)))
 
-        parsed_user_input = command.split()
-        if parsed_user_input[0] == "connect" and len(parsed_user_input) == 4:
-            if cur_connection is not None:
-                print("If you run a script, you can't use `connect` command twice")
-                return 1
-            else:
-                try:
-                    connection = p4runtime_lib.bmv2.Bmv2SwitchConnection(name=parsed_user_input[1],
-                                                                        address=parsed_user_input[2],
-                                                                        device_id=int(parsed_user_input[3]),
-                                                                        proto_dump_file="logs/{}_p4runtime_requests.txt".format(parsed_user_input[1]))
-                    connection.MasterArbitrationUpdate()
-                    cur_connection = connection
-                except grpc.RpcError as e:
-                    printGrpcError(e)
-                    break
-                except Exception as e:
-                    logging.error(traceback.format_exc())
-                    break
-                except KeyboardInterrupt:
-                    print("Keyboard interrupt")
-                    break
-        elif parsed_user_input[0] == "set_forwarding_pipeline_config" and len(parsed_user_input) == 3:
-            if cur_connection is None:
-                print("This CLI doesn't connect to any switch now, please use `connect` command before running `set_forwarding_pipeline_config`")
-                return 1
-            else:
-                if not os.path.exists(parsed_user_input[1]):
-                    print("p4info file not found: {}".format(parsed_user_input[1]))
-                    break
-                if not os.path.exists(parsed_user_input[2]):
-                    print("bmv2 JSON file not found: {}".format(parsed_user_input[2]))
-                    break
+    def _install_func(self, func_p4_header_file_path: str, func_p4_control_block_file_path: str, mount_point: str, mount_point_number: int):
+        merged_json_file_path = runtime_reconfig_tools.merge_and_compile(header_file_path=func_p4_header_file_path,
+                                                                        control_block_file_path=func_p4_control_block_file_path,
+                                                                        output_path=OUTPUT_FOLDER)
+        # inject "flex_name" field
+        runtime_reconfig_tools.update_merged_json_file(merged_json_file_path=merged_json_file_path)
+        if len(mount_point.split("->")) != 2:
+            raise P4RuntimeReconfigError("Parsing mount point fails, mount point is: {}".format(mount_point))
+        start_point, end_point = mount_point.split("->")
+        start_point = runtime_reconfig_tools.human_readable_name_to_flex_name(start_point)
+        end_point = runtime_reconfig_tools.human_readable_name_to_flex_name(end_point)
+        install_func_commands = runtime_reconfig_tools.generate_install_func_commands(merged_json_file_path=merged_json_file_path,
+                                                                                     start_point=start_point,
+                                                                                     end_point=end_point,
+                                                                                     mount_point_number=mount_point_number)
+        print("install func commands: ")
+        for command in install_func_commands:
+            print("\t" + command)
+        
+        for i, command in enumerate(install_func_commands):
+            print("Execute command [{}]: {}".format(i, command))
+            self._exec_one_command(command=command)
+            print("Finish running command [{}]: {}".format(i, command))
 
-                try:
-                    p4info_helper = p4runtime_lib.helper.P4InfoHelper(parsed_user_input[1])
-                    cur_connection.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
-                                                               bmv2_json_file_path=parsed_user_input[2])
-                except grpc.RpcError as e:
-                    printGrpcError(e)
-                    break
-                except Exception as e:
-                    logging.error(traceback.format_exc())
-                    break
-                except KeyboardInterrupt:
-                    print("Keyboard interrupt")
-                    break
-        else:
-            if cur_connection is None:
-                print("This CLI doesn't connect to any switch now, please use `connect` command")
-                break
-            else:
-                try:
-                    parsed_runtime_reconfig_cmd = RuntimeReconfigCommandParser(command)
-                except P4RuntimeReconfigError:
-                    print("Invalid command: {}".format(command))
-                    break
+    def _uninstall_func(self, mount_point_number: int):
+        uninstall_func_commands = runtime_reconfig_tools.generate_uninstall_func_commands(runtime_json_file_path=self.cur_connection.latest_config_json_path,
+                                                                                          mount_point_number=mount_point_number)
+        print("uninstall func commands: ")
+        for command in uninstall_func_commands:
+            print("\t" + command)
+        
+        for i, command in enumerate(uninstall_func_commands):
+            print("Execute command [{}]: {}".format(i, command))
+            self._exec_one_command(command=command)
+            print("Finish running command [{}]: {}".format(i, command))
 
-                try:
-                    cur_connection.RuntimeReconfig(parsed_cmd=parsed_runtime_reconfig_cmd)
-                except grpc.RpcError as e:
-                    printGrpcError(e)
-                    break
-                except P4RuntimeReconfigError as e:
-                    print(e)
-                    break
-                except Exception as e:
-                    logging.error(traceback.format_exc())
-                    break
-                except KeyboardInterrupt:
-                    print("Keyboard interrupt")
-                    break
-
-        print("Finish running command [{}]: {}".format(i, command))
-        if i == len(commands) - 1:
-            print("All commands are executed")
-
-
-    print("Shutdown connection")
-    ShutdownAllSwitchConnections()
-    print("Program exits")
-    return 0
-
-def exec_command_loop():
-    print(DETAILED_HELP_MESSAGE)
-    connections = dict() # { switch_name: BMV2SwitchConnect object }
-    cur_connection = None # BMV2SwitchConnect object
-    user_input = input("simple_switch_grpc_cli> ")
-
-    while user_input != "q" or user_input != "quit":
-        parsed_user_input = user_input.split()
-        if len(parsed_user_input) == 1 and (parsed_user_input[0] == "h" or parsed_user_input[0] == "help"):
+    def _exec_one_command(self, command: str):
+        parsed_command = command.split()
+        if len(parsed_command) == 1 and (parsed_command[0] == "h" or parsed_command[0] == "help"):
             print(HELP_MESSAGE)
-        elif len(parsed_user_input) == 1 and parsed_user_input[0] == "detailed_help":
+        elif len(parsed_command) == 1 and parsed_command[0] == "detailed_help":
             print(DETAILED_HELP_MESSAGE)
-        elif len(parsed_user_input) == 1 and parsed_user_input[0] == "list_switches":
-            if len(connections) != 0:
-                for i, connection in enumerate(connections):
-                    print("connection [{}]: name: {}, address: {}, device_id: {}, log_file: {}".format(i, 
-                                                                                                       connection.name, 
-                                                                                                       connection.address, 
-                                                                                                       connection.device_id, 
-                                                                                                       connection.proto_dump_file))
+        elif len(parsed_command) == 1 and parsed_command[0] == "list_switches":
+            if len(self.connections) != 0:
+                for connection_name, connection in self.connections.items():
+                    print("connection [{}]: address: {}, device_id: {}, log_file: {}".format(connection_name, 
+                                                                                            connection.bmv2_connection.name, 
+                                                                                            connection.bmv2_connection.address, 
+                                                                                            connection.bmv2_connection.device_id, 
+                                                                                            connection.bmv2_connection.proto_dump_file))
             else:
-                print("No connection")
-        elif parsed_user_input[0] == "connect" and (len(parsed_user_input) == 2 or len(parsed_user_input) == 4):
-            if len(parsed_user_input) == 2:
-                if parsed_user_input[1] in connections:
-                    cur_connection = connections[parsed_user_input[1]]
+                raise P4RuntimeReconfigWarning("CLI doesn't connect to any switch")
+        elif len(parsed_command) == 1 and parsed_command[0] == "show_program_graph":
+            if self.cur_connection is None:
+                raise P4RuntimeReconfigWarning("CLI doesn't connect to any switch")
+            elif self.cur_connection.program_graph_manager.cur_graph is None:
+                raise P4RuntimeReconfigWarning("Connection {} doesn't have any program graph".format(self.cur_connection.bmv2_connection.name))
+            else:
+                if DISPLAY_GRAPH_IN_COMMAND_LINE:
+                    runtime_reconfig_tools.display_graph_in_command_line(self.cur_connection.program_graph_manager.cur_graph)
                 else:
-                    print("Can't find connection whose name is {}".format(parsed_user_input[1]))
+                    runtime_reconfig_tools.display_graph_using_matplotlib(self.cur_connection.program_graph_manager.cur_graph)
+        elif parsed_command[0] == "connect" and (len(parsed_command) == 2 or len(parsed_command) == 4):
+            if len(parsed_command) == 2:
+                if parsed_command[1] in self.connections:
+                    self.cur_connection = self.connections[parsed_command[1]]
+                else:
+                    raise P4RuntimeReconfigWarning("Can't find connection whose name is {}".format(parsed_command[1]))
             else:
                 print("Connecting ...")
-                try:
-                    connection = p4runtime_lib.bmv2.Bmv2SwitchConnection(name=parsed_user_input[1],
-                                                                        address=parsed_user_input[2],
-                                                                        device_id=int(parsed_user_input[3]),
-                                                                        proto_dump_file="logs/{}_p4runtime_requests.txt".format(parsed_user_input[1]))
-                    connection.MasterArbitrationUpdate()
-                    connections[parsed_user_input[1]] = connection
-                    cur_connection = connection
-                except grpc.RpcError as e:
-                    printGrpcError(e)
-                    break
-                except Exception as e:
-                    logging.error(traceback.format_exc())
-                    break
-                except KeyboardInterrupt:
-                    print("Keyboard interrupt")
-                    break
+                connection = p4runtime_lib.bmv2.Bmv2SwitchConnection(name=parsed_command[1],
+                                                                    address=parsed_command[2],
+                                                                    device_id=int(parsed_command[3]),
+                                                                    proto_dump_file="{}/{}_p4runtime_requests.txt".format(OUTPUT_FOLDER, parsed_command[1]))
+                connection.MasterArbitrationUpdate()
+                self.connections[parsed_command[1]] = connection
+                self.cur_connection = connection
                 print("Connect successfully")
-        elif parsed_user_input[0] == "set_forwarding_pipeline_config" and len(parsed_user_input) == 3:
-            if cur_connection is None:
-                print("This CLI doesn't connect to any switch now, please use `connect` command before running `set_forwarding_pipeline_config`")
+        elif parsed_command[0] == "set_forwarding_pipeline_config" and len(parsed_command) == 3:
+            if self.cur_connection is None:
+                raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now, please use `connect` command before running `set_forwarding_pipeline_config`")
             else:
-                if not os.path.exists(parsed_user_input[1]):
-                    print("p4info file not found: {}".format(parsed_user_input[1]))
-                    try:
-                        user_input = input("{}simple_switch_grpc_cli> ".format("" if cur_connection is None else "({}) ".format(cur_connection.name)))
-                    except Exception as e:
-                        logging.error(traceback.format_exc())
-                        break
-                    except KeyboardInterrupt:
-                        print("Keyboard interrupt")
-                        break
-                    continue
-                if not os.path.exists(parsed_user_input[2]):
-                    print("bmv2 JSON file not found: {}".format(parsed_user_input[2]))
-                    try:
-                        user_input = input("{}simple_switch_grpc_cli> ".format("" if cur_connection is None else "({}) ".format(cur_connection.name)))
-                    except Exception as e:
-                        logging.error(traceback.format_exc())
-                        break
-                    except KeyboardInterrupt:
-                        print("Keyboard interrupt")
-                        break
-                    continue
-                print("Installing p4 program on {} ...".format(cur_connection.name))
-                try:
-                    p4info_helper = p4runtime_lib.helper.P4InfoHelper(parsed_user_input[1])
-                    cur_connection.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
-                                                               bmv2_json_file_path=parsed_user_input[2])
-                except grpc.RpcError as e:
-                    printGrpcError(e)
-                    break
-                except Exception as e:
-                    logging.error(traceback.format_exc())
-                    break
-                except KeyboardInterrupt:
-                    print("Keyboard interrupt")
-                    break
+                if not os.path.exists(parsed_command[1]):
+                    raise P4RuntimeReconfigError("p4info file not found: {}".format(parsed_command[1]))
+                if not os.path.exists(parsed_command[2]):
+                    raise P4RuntimeReconfigError("bmv2 JSON file not found: {}".format(parsed_command[2]))
+                # inject "flex_name" field
+                runtime_reconfig_tools.update_init_json_file(parsed_command[2])
+                print("Installing p4 program on {} ...".format(self.cur_connection.name))
+                p4info_helper = p4runtime_lib.helper.P4InfoHelper(parsed_command[1])
+                self.cur_connection.bmv2_connection.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
+                                                                                bmv2_json_file_path=parsed_command[2])
+                self.cur_connection.latest_config_json_path = parsed_command[2]
+                self.cur_connection.program_graph_manager.update_graph(new_config_json_file_path=parsed_command[2])
                 print("Install successfully")
-        else:
-            if cur_connection is None:
-                print("This CLI doesn't connect to any switch now, please use `connect` command")
+        elif parsed_command[0] == "install_func" and len(parsed_command) == 5:
+            if self.cur_connection is None:
+                raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now")
             else:
+                if self.cur_connection.latest_config_json_path is None:
+                    raise P4RuntimeReconfigWarning("The switch hasn't been initiated please use `set_forwarding_pipeline_config` command")
+                if not os.path.exists(parsed_command[1]):
+                    raise P4RuntimeReconfigError("p4 header file not found: {}".format(parsed_command[1]))
+                if not os.path.exists(parsed_command[2]):
+                    raise P4RuntimeReconfigError("Control block file not found: {}".format(parsed_command[2]))
+                if int(parsed_command[4]) < 0 or int(parsed_command[4]) >= 128:
+                    raise P4RuntimeReconfigError("Mount point number should be in range [0, 128)")
+            print("Installing function ...")
+            self._install_func(func_p4_header_file_path=parsed_command[1],
+                               func_p4_control_block_file_path=parsed_command[2],
+                               mount_point=parsed_command[3],
+                               mount_point_number=int(parsed_command[4]))
+            print("Install successfully")
+        elif parsed_command[0] == "uninstall_func" and len(parsed_command) == 2:
+            if self.cur_connection is None:
+                raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now")
+            else:
+                if self.cur_connection.latest_config_json_path is None:
+                    raise P4RuntimeReconfigWarning("The switch hasn't been initiated please use `set_forwarding_pipeline_config` command")
+                if int(parsed_command[1]) < 0 or int(parsed_command[1]) >= 128:
+                    raise P4RuntimeReconfigError("Mount point number should be in range [0, 128)")
+            print("Uninstalling function ...")
+            self._uninstall_func(mount_point_number=int(parsed_command[1]))
+            print("Uninstall successfully")
+        elif parsed_command[0] == "migrate_func" and len(parsed_command) == 5:
+            raise P4RuntimeReconfigWarning("We now don't support migrate_func")
+        else:
+            if self.cur_connection is None:
+                raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now, please use `connect` command")
+            else:
+                if self.cur_connection.latest_config_json_path is None:
+                    raise P4RuntimeReconfigWarning("The switch hasn't been initiated please use `set_forwarding_pipeline_config` command")
                 try:
-                    parsed_runtime_reconfig_cmd = RuntimeReconfigCommandParser(user_input)
+                    parsed_command = RuntimeReconfigCommandParser(command)
                 except P4RuntimeReconfigError:
-                    print("Invalid command, please enter again")
-                    try:
-                        user_input = input("{}simple_switch_grpc_cli> ".format("" if cur_connection is None else "({}) ".format(cur_connection.name)))
-                    except Exception as e:
-                        logging.error(traceback.format_exc())
-                        break
-                    except KeyboardInterrupt:
-                        print("Keyboard interrupt")
-                        break
-                    continue
+                    raise P4RuntimeReconfigWarning("Invalid command, please enter again")
 
                 print("Runtime reconfigurating ...")
+                response = self.cur_connection.bmv2_connection.RuntimeReconfig(parsed_cmd=parsed_command)
+                # we expect the returned json is a string
+                returned_json = response.p4objects_json_entry.p4objects_json
+                if not isinstance(returned_json, str):
+                    raise P4RuntimeReconfigError("Returned json is not a string")
+                returned_json_file_path = os.path.join(OUTPUT_FOLDER, "returned_json_{}.json".format(time.time()))
+                with open(returned_json_file_path, "w") as returned_json_file:
+                    returned_json_file.write(returned_json)
+                self.cur_connection.latest_config_json_path = returned_json_file_path
+                self.cur_connection.program_graph_manager.update_graph(new_config_json_file_path=returned_json_file_path)
+                print("Runtime reconfiguration ends")
+
+    def exec_script(self, commands: List[str]):
+        get_error = False
+        print("Start running script")
+        for i, command in enumerate(commands):
+            print("Execute command [{}]: {}".format(i, command))
+            try:
+                self._exec_one_command(command=command)
+            except P4RuntimeReconfigWarning as w:
+                print(w)
+                get_error = True
+                break
+            except P4RuntimeReconfigError as e:
+                print(e)
+                get_error = True
+                break
+            except grpc.RpcError as e:
+                printGrpcError(e)
+                get_error = True
+                break
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                get_error = True
+                break
+            except KeyboardInterrupt:
+                print("Keyboard interrupt")
+                get_error = True
+                break
+            print("Finish running command [{}]: {}".format(i, command))
+            if i == len(commands) - 1:
+                print("All commands are executed")
+        print("Shutdown all connections")
+        ShutdownAllSwitchConnections()
+        print("Program exits")
+        return 0 if not get_error else 1 
+
+    def exec_command_loop(self):
+        get_error = False
+        print(DETAILED_HELP_MESSAGE)
+        user_input = self._read_user_input()
+        while user_input != "q" or user_input != "quit":
+            try:
+                self._exec_one_command(command=user_input)
+            except P4RuntimeReconfigWarning as w:
+                print(w)
+                # if we get a warning, let user give a input again
                 try:
-                    cur_connection.RuntimeReconfig(parsed_cmd=parsed_runtime_reconfig_cmd)
-                except grpc.RpcError as e:
-                    printGrpcError(e)
-                    break
-                except P4RuntimeReconfigError as e:
-                    print(e)
-                    break
+                    user_input = self._read_user_input()
                 except Exception as e:
                     logging.error(traceback.format_exc())
+                    get_error = True
                     break
                 except KeyboardInterrupt:
                     print("Keyboard interrupt")
+                    get_error = True
                     break
-                print("Runtime reconfiguration ends")
+                continue
+            except P4RuntimeReconfigError as e:
+                print(e)
+                get_error = True
+                break
+            except grpc.RpcError as e:
+                printGrpcError(e)
+                get_error = True
+                break
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                get_error = True
+                break
+            except KeyboardInterrupt:
+                print("Keyboard interrupt")
+                get_error = True
+                break
 
-        try:
-            user_input = input("{}simple_switch_grpc_cli> ".format("" if cur_connection is None else "({}) ".format(cur_connection.name)))
-        except Exception as e:
-            logging.error(traceback.format_exc())
-            break
-        except KeyboardInterrupt:
-            print("Keyboard interrupt")
-            break
-
-    print("Shutdown all connections")
-    ShutdownAllSwitchConnections()
-    print("CLI quit")
-    return 0
+            try:
+                user_input = self._read_user_input()
+            except Exception as e:
+                logging.error(traceback.format_exc())
+                get_error = True
+                break
+            except KeyboardInterrupt:
+                print("Keyboard interrupt")
+                get_error = True
+                break
+        print("Shutdown all connections")
+        ShutdownAllSwitchConnections()
+        print("CLI quit")
+        return 0 if not get_error else 1
 
 
 if __name__ == '__main__':
@@ -372,7 +401,9 @@ if __name__ == '__main__':
             exit(1)
         else:
             with open(sys.argv[2], "r") as f:
-                exec_commands(f.readlines())
+                sswitch_grapc_cli = SSwitchGRPCCLI()
+                sswitch_grapc_cli.exec_script(f.readlines())
                 exit(0)
 
-    exec_command_loop()
+    sswitch_grapc_cli = SSwitchGRPCCLI()
+    sswitch_grapc_cli.exec_command_loop()

@@ -1,4 +1,4 @@
-PROTOTYPR_STR = \
+PROTOTYPE_STR = \
 """
 /* -*- P4_16 -*- */
 #include <core.p4>

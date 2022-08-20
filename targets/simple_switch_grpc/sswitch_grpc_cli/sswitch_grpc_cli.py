@@ -5,6 +5,8 @@ from typing import Dict, List
 import traceback
 import logging
 import time
+# import this module to prevent input() reading arrow keys
+import readline
 
 import grpc
 
@@ -33,7 +35,7 @@ For instance,
     You can connect to a switch named s1 at 127.0.0.1:50051, whose device id is 0
 After this,
     You can see the command line prefix becomes: (s1) simple_switch_grpc_cli> 
-    This means you are now communicate with s1
+    This means you are now connected to s1
     To change to another switch,
         Enter: connect <switch_name_given_by_yourself> 
             to connect to that switch if it has been added previously
@@ -60,7 +62,7 @@ The reconfiguration commands are the same as what is described in our runtime-pr
 Feel free to read the README and runtime_register_reconfig_readme.md
 For instance,
     (s1) simple_switch_grpc_cli> insert tabl ingress new_acl
-    You can insert a new table acl to s1 (table acl is originally a table in s1's p4objects_new)
+    You can insert a new table acl to s1 (table acl is a table in s1's p4objects_new)
 
 ::INSTALL_FUNC::
 We enable you to install at most 128 self-defined functions at runtime
@@ -75,7 +77,7 @@ For instance,
     (NOTE: scalars are also in the headers, so please check your control block doesn't contain any additional scalar)
     (you should obey this assumption when doing runtime reconfiguration; we can't ensure the program will not crash if you try to use different headers)
     <mount_point> should be an edge in program's flow diagram; it should be in the format of <start_node>-><end_node> 
-    (for example, table[old_MyIngress.acl]->conditional[old_MyIngress.node_4]); this will install the function between the <start_node> and <end_node>)
+    (for example, table[old_MyIngress.acl]->conditional[old_MyIngress.node_4]); this will install the function between the table[old_MyIngress.acl] and conditional[old_MyIngress.node_4])
     <mount_point_number> is a convenient representation of mount_point which we will use in `uninstall_func` and `migrate_func`
     (mount_point_number should be in range [0, 128), and the same number can't be repeatedly used for installing)
 
@@ -127,7 +129,7 @@ Or, by adding tag `--script <script_path>`, you can directly run a script
 
 OUTPUT_FOLDER = "sswitch_grpc_cli_output"
 
-DISPLAY_GRAPH_IN_COMMAND_LINE = True
+DISPLAY_GRAPH_IN_COMMAND_LINE = False
 
 def printGrpcError(e):
     print("gRPC Error:", e.details(), end=' ')
@@ -150,7 +152,7 @@ class SSwitchGRPCCLI:
         os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
     def _read_user_input(self) -> str:
-        return input("{}simple_switch_grpc_cli> ".format("" if self.cur_connection is None else "({}) ".format(self.cur_connection.name)))
+        return input("{}simple_switch_grpc_cli> ".format("" if self.cur_connection is None else "({}) ".format(self.cur_connection.bmv2_connection.name)))
 
     def _install_func(self, func_p4_header_file_path: str, func_p4_control_block_file_path: str, mount_point: str, mount_point_number: int):
         merged_json_file_path = runtime_reconfig_tools.merge_and_compile(header_file_path=func_p4_header_file_path,
@@ -163,10 +165,11 @@ class SSwitchGRPCCLI:
         start_point, end_point = mount_point.split("->")
         start_point = runtime_reconfig_tools.human_readable_name_to_flex_name(start_point)
         end_point = runtime_reconfig_tools.human_readable_name_to_flex_name(end_point)
-        install_func_commands = runtime_reconfig_tools.generate_install_func_commands(merged_json_file_path=merged_json_file_path,
-                                                                                     start_point=start_point,
-                                                                                     end_point=end_point,
-                                                                                     mount_point_number=mount_point_number)
+        install_func_commands = runtime_reconfig_tools.generate_install_func_commands(runtime_json_file_path=self.cur_connection.latest_config_json_path,
+                                                                                      merged_json_file_path=merged_json_file_path,
+                                                                                      start_point=start_point,
+                                                                                      end_point=end_point,
+                                                                                      mount_point_number=mount_point_number)
         print("install func commands: ")
         for command in install_func_commands:
             print("\t" + command)

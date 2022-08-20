@@ -1,2 +1,5 @@
 # These Makefiles are handcrafted, not auto generated
 !Makefile
+
+# cli output files
+sswitch_grpc_cli_output/

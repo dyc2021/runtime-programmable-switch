@@ -125,7 +125,7 @@ You can start this CLI without any command line argument
 Or, by adding tag `--script <script_path>`, you can directly run a script
 """
 
-OUTPUT_FOLDER = "sswitch_graph_cli_output"
+OUTPUT_FOLDER = "sswitch_grpc_cli_output"
 
 DISPLAY_GRAPH_IN_COMMAND_LINE = True
 

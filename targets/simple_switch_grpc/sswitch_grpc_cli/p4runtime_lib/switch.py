@@ -245,8 +245,7 @@ class SwitchConnection(object):
             runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INIT_P4OBJECTS_NEW
             p4objects_new_json_path = parsed_cmd.action_arguments[0]
             with open(p4objects_new_json_path, "r") as f:
-                init_p4objects_new_entry = p4runtime_pb2.InitP4ObjectsNewEntry()
-                init_p4objects_new_entry.p4objects_new_json = f.read()
+                runtime_reconfig_content.init_p4objects_new_entry.p4objects_new_json = f.read()
 
         elif parsed_cmd.action == "insert":
             if parsed_cmd.action_target == "tabl":
@@ -327,10 +326,10 @@ class SwitchConnection(object):
             raise P4RuntimeReconfigError("Can't parse the command, this shouldn't happen, please check RuntimeReconfigCommandParser")
 
         if dry_run:
-            print("P4Runtime Reconfig Request: ", request)
+            print("P4Runtime Reconfig Request: \n", request)
             response = None
         else:
-            print("Send P4Runtime Reconfig Request:", request)
+            print("Send P4Runtime Reconfig Request: \n", request)
             response = self.client_stub.Write(request)
             if parsed_cmd.action == "init_p4objects_new":
                 self.already_init_p4objects_new = True

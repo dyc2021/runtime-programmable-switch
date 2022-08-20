@@ -27,10 +27,14 @@ pi_status_t _pi_runtime_reconfig_init_p4objects_new(pi_session_handle_t session_
     assert(p4info != nullptr);
 
     auto error_code = pibmv2::switch_->mt_runtime_reconfig_init_p4objects_new(0, p4objects_new_json);
-    if (error_code != 0)
+    if (error_code != 0) {
+        std::cout << "Get error code: " << error_code << std::endl;
         return convert_error_code(error_code);
+    }
 
     pibmv2::switch_->get_context(0)->print_runtime_cfg_to_buffer(p4objects_json_buffer);
+
+    std::cout << "Init success" << std::endl;
     
     return PI_STATUS_SUCCESS;
 }

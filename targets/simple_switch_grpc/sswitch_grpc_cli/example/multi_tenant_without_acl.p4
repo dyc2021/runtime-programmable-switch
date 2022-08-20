@@ -2,19 +2,14 @@
 #include <core.p4>
 #include <v1model.p4>
 
-const bit<16> TYPE_IPV4 = 0x800;
-
 /*************************************************************************
 *********************** H E A D E R S  ***********************************
-*************************************************************************/
-
-typedef bit<9>  egressSpec_t;
-typedef bit<48> macAddr_t;
-typedef bit<32> ip4Addr_t;
+**************************************************************************
+*/
 
 header ethernet_t {
-    macAddr_t dstAddr;
-    macAddr_t srcAddr;
+    bit<48>   dstAddr;
+    bit<48>   srcAddr;
     bit<16>   etherType;
 }
 
@@ -29,8 +24,21 @@ header ipv4_t {
     bit<8>    ttl;
     bit<8>    protocol;
     bit<16>   hdrChecksum;
-    ip4Addr_t srcAddr;
-    ip4Addr_t dstAddr;
+    bit<32>   srcAddr;
+    bit<32>   dstAddr;
+}
+
+header tcp_t{
+    bit<16> srcPort;
+    bit<16> dstPort;
+    bit<32> seqNo;
+    bit<32> ackNo;
+    bit<4>  dataOffset;
+    bit<4>  res;
+    bit<8>  flags;
+    bit<16> window;
+    bit<16> checksum;
+    bit<16> urgentPtr;
 }
 
 struct metadata {
@@ -40,11 +48,13 @@ struct metadata {
 struct headers {
     ethernet_t   ethernet;
     ipv4_t       ipv4;
+    tcp_t        tcp;
 }
 
 /*************************************************************************
 *********************** P A R S E R  ***********************************
-*************************************************************************/
+**************************************************************************
+*/
 
 parser MyParser(packet_in packet,
                 out headers hdr,
@@ -58,21 +68,29 @@ parser MyParser(packet_in packet,
     state parse_ethernet {
         packet.extract(hdr.ethernet);
         transition select(hdr.ethernet.etherType) {
-            TYPE_IPV4: parse_ipv4;
+            0x800: parse_ipv4;
             default: accept;
         }
     }
 
     state parse_ipv4 {
         packet.extract(hdr.ipv4);
-        transition accept;
+        transition select(hdr.ipv4.protocol){
+            6: tcp;
+            default: accept;
+        }
     }
 
+    state tcp {
+       packet.extract(hdr.tcp);
+       transition accept;
+    }
 }
 
 /*************************************************************************
 ************   C H E C K S U M    V E R I F I C A T I O N   *************
-*************************************************************************/
+**************************************************************************
+*/
 
 control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
     apply {  }
@@ -81,16 +99,33 @@ control MyVerifyChecksum(inout headers hdr, inout metadata meta) {
 
 /*************************************************************************
 **************  I N G R E S S   P R O C E S S I N G   *******************
-*************************************************************************/
+**************************************************************************
+*/
 
 control MyIngress(inout headers hdr,
                   inout metadata meta,
                   inout standard_metadata_t standard_metadata) {
+
+    action setTos(bit<8> tos) {
+        hdr.ipv4.diffserv = tos;
+    }
+
+    table mark_tos {
+        key = {
+            hdr.ipv4.dstAddr: exact;
+        }
+        actions = {
+            setTos;
+            NoAction;
+        }
+        default_action = NoAction();
+    }
+
     action drop() {
         mark_to_drop(standard_metadata);
     }
 
-    action ipv4_forward(macAddr_t dstAddr, egressSpec_t port) {
+    action ipv4_forward(bit<48> dstAddr, bit<9> port) {
         standard_metadata.egress_spec = port;
         hdr.ethernet.srcAddr = hdr.ethernet.dstAddr;
         hdr.ethernet.dstAddr = dstAddr;
@@ -111,15 +146,16 @@ control MyIngress(inout headers hdr,
     }
 
     apply {
-        if (hdr.ipv4.isValid()) {
-            ipv4_lpm.apply();
-        }
+        mark_tos.apply();
+        ipv4_lpm.apply();
     }
+
 }
 
 /*************************************************************************
 ****************  E G R E S S   P R O C E S S I N G   *******************
-*************************************************************************/
+**************************************************************************
+*/
 
 control MyEgress(inout headers hdr,
                  inout metadata meta,
@@ -129,14 +165,15 @@ control MyEgress(inout headers hdr,
 
 /*************************************************************************
 *************   C H E C K S U M    C O M P U T A T I O N   **************
-*************************************************************************/
+**************************************************************************
+*/
 
 control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
      apply {
-        update_checksum(
-        hdr.ipv4.isValid(),
+	    update_checksum(
+	    hdr.ipv4.isValid(),
             { hdr.ipv4.version,
-              hdr.ipv4.ihl,
+	          hdr.ipv4.ihl,
               hdr.ipv4.diffserv,
               hdr.ipv4.totalLen,
               hdr.ipv4.identification,
@@ -146,25 +183,28 @@ control MyComputeChecksum(inout headers  hdr, inout metadata meta) {
               hdr.ipv4.protocol,
               hdr.ipv4.srcAddr,
               hdr.ipv4.dstAddr },
-            hdr.ipv4.hdrChecksum,
+              hdr.ipv4.hdrChecksum,
             HashAlgorithm.csum16);
     }
 }
 
 /*************************************************************************
 ***********************  D E P A R S E R  *******************************
-*************************************************************************/
+**************************************************************************
+*/
 
 control MyDeparser(packet_out packet, in headers hdr) {
     apply {
         packet.emit(hdr.ethernet);
         packet.emit(hdr.ipv4);
+        packet.emit(hdr.tcp);
     }
 }
 
 /*************************************************************************
 ***********************  S W I T C H  *******************************
-*************************************************************************/
+**************************************************************************
+*/
 
 V1Switch(
 MyParser(),

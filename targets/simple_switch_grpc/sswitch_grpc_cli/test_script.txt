@@ -1,0 +1,2 @@
+connect s1 localhost:2222 0
+set_forwarding_pipeline_config ./example/build/basic.p4.p4info.txt ./example/build/basic.json

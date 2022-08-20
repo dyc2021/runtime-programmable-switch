@@ -222,11 +222,11 @@ class SSwitchGRPCCLI:
                     raise P4RuntimeReconfigWarning("Can't find connection whose name is {}".format(parsed_command[1]))
             else:
                 print("Connecting ...")
-                connection = p4runtime_lib.bmv2.Bmv2SwitchConnection(name=parsed_command[1],
-                                                                    address=parsed_command[2],
-                                                                    device_id=int(parsed_command[3]),
-                                                                    proto_dump_file="{}/{}_p4runtime_requests.txt".format(OUTPUT_FOLDER, parsed_command[1]))
-                connection.MasterArbitrationUpdate()
+                connection = SSwitchGRPCConnection(name=parsed_command[1],
+                                                    address=parsed_command[2],
+                                                    device_id=int(parsed_command[3]),
+                                                    proto_dump_file="{}/{}_p4runtime_requests.txt".format(OUTPUT_FOLDER, parsed_command[1]))
+                connection.bmv2_connection.MasterArbitrationUpdate()
                 self.connections[parsed_command[1]] = connection
                 self.cur_connection = connection
                 print("Connect successfully")
@@ -240,7 +240,7 @@ class SSwitchGRPCCLI:
                     raise P4RuntimeReconfigError("bmv2 JSON file not found: {}".format(parsed_command[2]))
                 # inject "flex_name" field
                 runtime_reconfig_tools.update_init_json_file(parsed_command[2])
-                print("Installing p4 program on {} ...".format(self.cur_connection.name))
+                print("Installing p4 program on {} ...".format(self.cur_connection.bmv2_connection.name))
                 p4info_helper = p4runtime_lib.helper.P4InfoHelper(parsed_command[1])
                 self.cur_connection.bmv2_connection.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
                                                                                 bmv2_json_file_path=parsed_command[2])

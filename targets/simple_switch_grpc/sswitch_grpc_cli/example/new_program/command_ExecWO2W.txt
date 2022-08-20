@@ -1,6 +1,3 @@
-connect s1 localhost:50051 0
-set_forwarding_pipeline_config ./example/build/multi_tenant_without_acl.p4.p4info.txt ./example/build/multi_tenant_without_acl.json
-init_p4objects_new ./example/new_program/multi_tenant_with_acl.json
 insert flex ingress flx_TE0 null null
 insert cond ingress new_node_4
 insert tabl ingress new_MyIngress.acl

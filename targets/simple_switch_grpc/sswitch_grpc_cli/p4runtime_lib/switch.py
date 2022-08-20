@@ -42,18 +42,18 @@ class RuntimeReconfigCommandParser:
             raise P4RuntimeReconfigError("Invalid Command: can't recognize action {},"
                                          "your action should be in {}".format(self.action, valid_actions))
 
-        self.action_target = cmd_entries[1] if self.action != "trigger" or self.action != "init_p4objects_new" else ""
-        if self.action != "trigger" or self.action != "init_p4objects_new":
+        self.action_target = cmd_entries[1] if self.action != "trigger" and self.action != "init_p4objects_new" else ""
+        if self.action != "trigger" and self.action != "init_p4objects_new":
             valid_action_targets_for_insert = ["tabl", "cond", "flex", "register_array"]
             valid_action_targets_for_change = ["tabl", "cond", "flex", "register_array_size", "register_array_bitwidth", "init"]
             valid_action_targets_for_delete = ["tabl", "cond", "flex", "register_array"]
-            if self.action == "insert" and not self.action_target in valid_action_targets_for_insert:
+            if self.action == "insert" and self.action_target not in valid_action_targets_for_insert:
                 raise P4RuntimeReconfigError("Invalid command: can't recognize action target for insert: {},"
                                              "your action target should be in {}".format(self.action_target, valid_action_targets_for_insert))
-            elif self.action == "change" and not self.action_target in valid_action_targets_for_change:
+            elif self.action == "change" and self.action_target not in valid_action_targets_for_change:
                 raise P4RuntimeReconfigError("Invalid command: can't recognize action target for change: {},"
                                              "your action target should be in {}".format(self.action_target, valid_action_targets_for_change))
-            elif self.action == "delete" and not self.action_target in valid_action_targets_for_delete:
+            elif self.action == "delete" and self.action_target not in valid_action_targets_for_delete:
                 raise P4RuntimeReconfigError("Invalid command: can't recognize action target for delete: {},"
                                              "your action target should be in {}".format(self.action_target, valid_action_targets_for_delete))
 
@@ -62,7 +62,7 @@ class RuntimeReconfigCommandParser:
                 raise P4RuntimeReconfigError("Invalid command: `init_p4objects_new` command requires 1 argument")
             self.action_arguments.append(cmd_entries[1])
         elif self.action == "trigger":
-            if len(cmd_entries) != 2 or len(cmd_entries) != 3:
+            if len(cmd_entries) != 2 and len(cmd_entries) != 3:
                 raise P4RuntimeReconfigError("Invalid command: `trigger` command requires 1 or 2 arguments")
             
             if len(cmd_entries) == 2:
@@ -235,60 +235,59 @@ class SwitchConnection(object):
         update.type = p4runtime_pb2.Update.RUNTIME_RECONFIG
 
         runtime_reconfig_entry = update.entity.runtime_reconfig_entry
-        runtime_reconfig_type = runtime_reconfig_entry.runtime_reconfig_type
         runtime_reconfig_content = runtime_reconfig_entry.runtime_reconfig_content
 
         if parsed_cmd.action != "init_p4objects_new" and not self.already_init_p4objects_new:
             raise P4RuntimeReconfigError("p4objects_new has not been initialized for this switch, you should init it before doing runtime reconfig")
 
         if parsed_cmd.action == "init_p4objects_new":
-            runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INIT_P4OBJECTS_NEW
+            runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INIT_P4OBJECTS_NEW
             p4objects_new_json_path = parsed_cmd.action_arguments[0]
             with open(p4objects_new_json_path, "r") as f:
                 runtime_reconfig_content.init_p4objects_new_entry.p4objects_new_json = f.read()
 
         elif parsed_cmd.action == "insert":
             if parsed_cmd.action_target == "tabl":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_TABLE
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_TABLE
                 runtime_reconfig_content.insert_table_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.insert_table_entry.table_name = parsed_cmd.action_arguments[1]
             elif parsed_cmd.action_target == "cond":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_CONDITIONAL
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_CONDITIONAL
                 runtime_reconfig_content.insert_conditional_entry.pipeline_name = parsed_cmd.action_arguments[0]
-                runtime_reconfig_content.insert_conditonal_entry.branch_name = parsed_cmd.action_arguments[1]
+                runtime_reconfig_content.insert_conditional_entry.branch_name = parsed_cmd.action_arguments[1]
             elif parsed_cmd.action_target == "flex":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_FLEX
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_FLEX
                 runtime_reconfig_content.insert_flex_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.insert_flex_entry.node_name = parsed_cmd.action_arguments[1]
                 runtime_reconfig_content.insert_flex_entry.true_next_node = parsed_cmd.action_arguments[2]
                 runtime_reconfig_content.insert_flex_entry.false_next_node = parsed_cmd.action_arguments[3]
             elif parsed_cmd.action_target == "register_array":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_REGISTER_ARRAY
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INSERT_REGISTER_ARRAY
                 runtime_reconfig_content.insert_register_array_entry.register_array_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.insert_register_array_entry.register_array_size = parsed_cmd.action_arguments[1]
                 runtime_reconfig_content.insert_register_array_entry.register_array_bitwidth = parsed_cmd.action_arguments[2]
         
         elif parsed_cmd.action == "change":
             if parsed_cmd.action_target == "tabl":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_TABLE
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_TABLE
                 runtime_reconfig_content.change_table_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.change_table_entry.table_name = parsed_cmd.action_arguments[1]
                 runtime_reconfig_content.change_table_entry.edge_name = parsed_cmd.action_arguments[2]
                 runtime_reconfig_content.change_table_entry.table_name_next = parsed_cmd.action_arguments[3]
             elif parsed_cmd.action_target == "cond":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_CONDITIONAL
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_CONDITIONAL
                 runtime_reconfig_content.change_conditional_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.change_conditional_entry.branch_name = parsed_cmd.action_arguments[1]
                 runtime_reconfig_content.change_conditional_entry.true_or_false_next = True if parsed_cmd.action_arguments[2] == "true_next" else False
                 runtime_reconfig_content.change_conditional_entry.node_name = parsed_cmd.action_arguments[3]
             elif parsed_cmd.action_target == "flex":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_FLEX
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_FLEX
                 runtime_reconfig_content.change_flex_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.change_flex_entry.flx_name = parsed_cmd.action_arguments[1]
                 runtime_reconfig_content.change_flex_entry.true_or_false_next = True if parsed_cmd.action_arguments[2] == "true_next" else False
                 runtime_reconfig_content.change_flex_entry.node_next = parsed_cmd.action_arguments[3]
             elif "register_array" in parsed_cmd.action_target:
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_REGISTER_ARRAY
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_REGISTER_ARRAY
                 runtime_reconfig_content.change_register_array_entry.register_array_name = parsed_cmd.action_arguments[0]
                 if parsed_cmd.action_target == "register_array_size":
                     runtime_reconfig_content.change_register_array_entry.register_array_change_type = p4runtime_pb2.ChangeRegisterArrayEntry.CHANGE_SIZE
@@ -296,29 +295,29 @@ class SwitchConnection(object):
                     runtime_reconfig_content.change_register_array_entry.register_array_change_type = p4runtime_pb2.ChangeRegisterArrayEntry.CHANGE_BITWIDTH
                 runtime_reconfig_content.change_register_array_entry.new_value = int(parsed_cmd.action_arguments[1])
             elif parsed_cmd.action_target == "init":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_INIT
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.CHANGE_INIT
                 runtime_reconfig_content.change_init_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.change_init_entry.table_name_next = parsed_cmd.action_arguments[1]
         
         elif parsed_cmd.action == "delete":
             if parsed_cmd.action_target == "tabl":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_TABLE
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_TABLE
                 runtime_reconfig_content.delete_table_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.delete_table_entry.table_name = parsed_cmd.action_arguments[1]
             elif parsed_cmd.action_target == "cond":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_CONDITIONAL
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_CONDITIONAL
                 runtime_reconfig_content.delete_conditional_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.delete_conditional_entry.branch_name = parsed_cmd.action_arguments[1]
             elif parsed_cmd.action_target == "flex":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_FLEX
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_FLEX
                 runtime_reconfig_content.delete_flex_entry.pipeline_name = parsed_cmd.action_arguments[0]
                 runtime_reconfig_content.delete_flex_entry.flx_name = parsed_cmd.action_arguments[1]
             elif parsed_cmd.action_target == "register_array":
-                runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_REGISTER_ARRAY
+                runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.DELETE_REGISTER_ARRAY
                 runtime_reconfig_content.delete_register_array_entry.register_array_name = parsed_cmd.action_arguments[0]
         
         elif parsed_cmd.action == "trigger":
-            runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.TRIGGER
+            runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.TRIGGER
             runtime_reconfig_content.trigger_entry.on_or_off = True if parsed_cmd.action_arguments[0] == "on" else False
             runtime_reconfig_content.trigger_entry.trigger_number = int(parsed_cmd.action_arguments[1])
 

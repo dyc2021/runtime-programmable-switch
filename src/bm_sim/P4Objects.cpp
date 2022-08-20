@@ -3309,7 +3309,7 @@ P4Objects::prepare_flex_hdr_parser(Json::Value &cfg_root) {
         "}";
       char output[2048];
 
-      sprintf(output, s, "flex_func_mount_point_number_$0$_parse");
+      sprintf(output, s, "\"flex_func_mount_point_number_$0$_parse\"");
 
       std::stringstream ss;
       Json::Value v;
@@ -3354,7 +3354,7 @@ P4Objects::prepare_flex_hdr_parser(Json::Value &cfg_root) {
 
       
       if (i < max_mount_point_number - 1) {
-        sprintf(output, s, i, -(i + 2), i, ("flex_func_mount_point_number_$" + std::to_string(i + 1) + "$_parse").c_str());
+        sprintf(output, s, i, -(i + 2), i, ("\"flex_func_mount_point_number_$" + std::to_string(i + 1) + "$_parse\"").c_str());
       } else {
         sprintf(output, s, i, -(i + 2), i,
           (orig_init_state_name == "" ? "null" : "\"" + orig_init_state_name + "\"").c_str());

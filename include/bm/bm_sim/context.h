@@ -59,6 +59,7 @@
 #include <unordered_map>
 #include <utility>
 #include <vector>
+#include <list>
 
 #include "P4Objects.h"
 #include "action_profile.h"
@@ -543,6 +544,10 @@ public:
   std::shared_ptr<P4Objects> p4objects{nullptr};
   std::shared_ptr<P4Objects> p4objects_rt{nullptr};
   std::shared_ptr<P4Objects> p4objects_new{nullptr};
+  // this is a list to store all p4objects_new
+  // since, our insert action doesn't change the ownership of table/conditional,
+  // and we need to ensure these inserted tables/conditionals will not be deleted
+  std::list<std::shared_ptr<P4Objects> > p4objects_new_list{};
 
   std::unordered_map<std::string, std::string> id2newNodeName{};
 

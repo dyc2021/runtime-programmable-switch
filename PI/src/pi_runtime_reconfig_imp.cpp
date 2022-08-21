@@ -26,7 +26,7 @@ pi_status_t _pi_runtime_reconfig_init_p4objects_new(pi_session_handle_t session_
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_init_p4objects_new(0, p4objects_new_json);
+    auto error_code = pibmv2::switch_->runtime_reconfig_init_p4objects_new(0, p4objects_new_json);
     if (error_code != 0) {
         return convert_error_code(error_code);
     }
@@ -46,7 +46,7 @@ pi_status_t _pi_runtime_reconfig_insert_table(pi_session_handle_t session_handle
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_insert_table(0, pipeline_name, table_name);
+    auto error_code = pibmv2::switch_->runtime_reconfig_insert_table(0, pipeline_name, table_name);
     if (error_code != 0)
         return convert_error_code(error_code);
 
@@ -67,7 +67,7 @@ pi_status_t _pi_runtime_reconfig_change_table(pi_session_handle_t session_handle
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_change_table(0, pipeline_name, table_name,
+    auto error_code = pibmv2::switch_->runtime_reconfig_change_table(0, pipeline_name, table_name,
                                                                         edge_name, table_name_next);
     if (error_code != 0)
         return convert_error_code(error_code);
@@ -87,7 +87,7 @@ pi_status_t _pi_runtime_reconfig_delete_table(pi_session_handle_t session_handle
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_delete_table(0, pipeline_name, table_name);
+    auto error_code = pibmv2::switch_->runtime_reconfig_delete_table(0, pipeline_name, table_name);
     if (error_code != 0)
         return convert_error_code(error_code);
 
@@ -106,7 +106,7 @@ pi_status_t _pi_runtime_reconfig_insert_conditional(pi_session_handle_t session_
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_insert_conditional(0, pipeline_name, branch_name);
+    auto error_code = pibmv2::switch_->runtime_reconfig_insert_conditional(0, pipeline_name, branch_name);
     if (error_code != 0)
         return convert_error_code(error_code);
 
@@ -127,7 +127,7 @@ pi_status_t _pi_runtime_reconfig_change_conditional(pi_session_handle_t session_
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_change_conditional(0, pipeline_name, branch_name,
+    auto error_code = pibmv2::switch_->runtime_reconfig_change_conditional(0, pipeline_name, branch_name,
                                                                               true_or_false_next, node_name);
     if (error_code != 0)
         return convert_error_code(error_code);
@@ -147,7 +147,7 @@ pi_status_t _pi_runtime_reconfig_delete_conditional(pi_session_handle_t session_
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_delete_conditional(0, pipeline_name, branch_name);
+    auto error_code = pibmv2::switch_->runtime_reconfig_delete_conditional(0, pipeline_name, branch_name);
     if (error_code != 0)
         return convert_error_code(error_code);
 
@@ -168,7 +168,7 @@ pi_status_t _pi_runtime_reconfig_insert_flex(pi_session_handle_t session_handle,
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_insert_flex(0, pipeline_name, node_name,
+    auto error_code = pibmv2::switch_->runtime_reconfig_insert_flex(0, pipeline_name, node_name,
                                                                        true_next_node, false_next_node);
     if (error_code != 0)
         return convert_error_code(error_code);
@@ -190,7 +190,7 @@ pi_status_t _pi_runtime_reconfig_change_flex(pi_session_handle_t session_handle,
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_change_flex(0, pipeline_name, flx_name,
+    auto error_code = pibmv2::switch_->runtime_reconfig_change_flex(0, pipeline_name, flx_name,
                                                                        true_or_false_next, node_next);
     if (error_code != 0)
         return convert_error_code(error_code);
@@ -210,7 +210,7 @@ pi_status_t _pi_runtime_reconfig_delete_flex(pi_session_handle_t session_handle,
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_delete_flex(0, pipeline_name, flx_name);
+    auto error_code = pibmv2::switch_->runtime_reconfig_delete_flex(0, pipeline_name, flx_name);
     if (error_code != 0)
         return convert_error_code(error_code);
 
@@ -230,7 +230,7 @@ pi_status_t _pi_runtime_reconfig_insert_register_array(pi_session_handle_t sessi
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_insert_register_array(0, register_array_name, 
+    auto error_code = pibmv2::switch_->runtime_reconfig_insert_register_array(0, register_array_name, 
                                                                                 register_array_size, register_array_bitwidth);
     if (error_code != 0)
         return convert_error_code(error_code);
@@ -251,7 +251,7 @@ pi_status_t _pi_runtime_reconfig_change_register_array(pi_session_handle_t sessi
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_change_register_array(0, register_array_name, 
+    auto error_code = pibmv2::switch_->runtime_reconfig_change_register_array(0, register_array_name, 
                                                                                 change_type, new_value);
     if (error_code != 0)
         return convert_error_code(error_code);
@@ -270,7 +270,7 @@ pi_status_t _pi_runtime_reconfig_delete_register_array(pi_session_handle_t sessi
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_delete_register_array(0, register_array_name);
+    auto error_code = pibmv2::switch_->runtime_reconfig_delete_register_array(0, register_array_name);
     if (error_code != 0)
         return convert_error_code(error_code);
 
@@ -289,7 +289,7 @@ pi_status_t _pi_runtime_reconfig_trigger(pi_session_handle_t session_handle,
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_trigger(0, on_or_off, trigger_number);
+    auto error_code = pibmv2::switch_->runtime_reconfig_trigger(0, on_or_off, trigger_number);
     if (error_code != 0)
         return convert_error_code(error_code);
 
@@ -308,7 +308,7 @@ pi_status_t _pi_runtime_reconfig_change_init(pi_session_handle_t session_handle,
     const auto *p4info = pibmv2::get_device_info(dev_tgt.dev_id);
     assert(p4info != nullptr);
 
-    auto error_code = pibmv2::switch_->mt_runtime_reconfig_change_init(0, pipeline_name,
+    auto error_code = pibmv2::switch_->runtime_reconfig_change_init(0, pipeline_name,
                                                                        table_name_next);
     if (error_code != 0)
         return convert_error_code(error_code);

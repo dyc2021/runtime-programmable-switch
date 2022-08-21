@@ -971,7 +971,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   public:
 
   int 
-  mt_runtime_reconfig_init_p4objects_new(cxt_id_t cxt_id, 
+  runtime_reconfig_init_p4objects_new(cxt_id_t cxt_id, 
                                          const char* p4objects_new_json) {
     std::istringstream json_ss(p4objects_new_json);
     if (!json_ss) {
@@ -981,6 +981,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
 
     auto& p4objects_new = contexts.at(cxt_id).p4objects_new;
     p4objects_new = std::make_shared<P4Objects>(std::cout, true);
+    contexts.at(cxt_id).p4objects_new_list.push_back(p4objects_new);
     int status = p4objects_new->init_objects(&json_ss, 
                                              get_lookup_factory(), 
                                              contexts.at(cxt_id).device_id, 
@@ -995,7 +996,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_insert_table(cxt_id_t cxt_id, 
+  runtime_reconfig_insert_table(cxt_id_t cxt_id, 
                                    const char* pipeline_name, 
                                    const char* table_name) {
     std::string pipeline(pipeline_name);
@@ -1021,7 +1022,8 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
     return static_cast<int>(RuntimeReconfigErrorCode::SUCCESS);
   }
 
-  int mt_runtime_reconfig_change_table(cxt_id_t cxt_id,
+  int 
+  runtime_reconfig_change_table(cxt_id_t cxt_id,
                                        const char* pipeline_name,
                                        const char* table_name,
                                        const char* edge_name,
@@ -1047,7 +1049,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_delete_table(cxt_id_t cxt_id,
+  runtime_reconfig_delete_table(cxt_id_t cxt_id,
                                    const char* pipeline_name,
                                    const char* table_name) {
     std::string pipeline(pipeline_name);
@@ -1070,7 +1072,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_insert_conditional(cxt_id_t cxt_id,
+  runtime_reconfig_insert_conditional(cxt_id_t cxt_id,
                                          const char* pipeline_name,
                                          const char* branch_name) {
     std::string pipeline(pipeline_name);
@@ -1095,7 +1097,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_change_conditional(cxt_id_t cxt_id, 
+  runtime_reconfig_change_conditional(cxt_id_t cxt_id, 
                                          const char* pipeline_name,
                                          const char* branch_name,
                                          bool true_or_false_next,
@@ -1121,7 +1123,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_delete_conditional(cxt_id_t cxt_id,
+  runtime_reconfig_delete_conditional(cxt_id_t cxt_id,
                                          const char* pipeline_name,
                                          const char* branch_name) {
     std::string pipeline(pipeline_name);
@@ -1144,7 +1146,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_insert_flex(cxt_id_t cxt_id,
+  runtime_reconfig_insert_flex(cxt_id_t cxt_id,
                                   const char* pipeline_name,
                                   const char* node_name,
                                   const char* true_next_node,
@@ -1199,7 +1201,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_change_flex(cxt_id_t cxt_id,
+  runtime_reconfig_change_flex(cxt_id_t cxt_id,
                                   const char* pipeline_name,
                                   const char* flx_name,
                                   bool true_or_false_next,
@@ -1225,7 +1227,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_delete_flex(cxt_id_t cxt_id,
+  runtime_reconfig_delete_flex(cxt_id_t cxt_id,
                                   const char* pipeline_name,
                                   const char* flx_name) {
     std::string pipeline(pipeline_name);
@@ -1248,7 +1250,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_insert_register_array(cxt_id_t cxt_id,
+  runtime_reconfig_insert_register_array(cxt_id_t cxt_id,
                                             const char* register_array_name,
                                             const uint32_t register_array_size,
                                             const uint32_t register_array_bitwidth) {
@@ -1274,7 +1276,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_change_register_array(cxt_id_t cxt_id,
+  runtime_reconfig_change_register_array(cxt_id_t cxt_id,
                                             const char* register_array_name,
                                             const uint32_t change_type,
                                             const uint32_t new_value) {
@@ -1304,7 +1306,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_delete_register_array(cxt_id_t cxt_id,
+  runtime_reconfig_delete_register_array(cxt_id_t cxt_id,
                                             const char* register_array_name) {
     std::string items[3], vals[3];
     items[0] = register_array_name;
@@ -1324,7 +1326,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_trigger(cxt_id_t cxt_id,
+  runtime_reconfig_trigger(cxt_id_t cxt_id,
                               bool on_or_off,
                               int trigger_number = -1) {
     auto& context = contexts.at(cxt_id);
@@ -1338,7 +1340,7 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
   }
 
   int
-  mt_runtime_reconfig_change_init(cxt_id_t cxt_id,
+  runtime_reconfig_change_init(cxt_id_t cxt_id,
                                   const char* pipeline_name,
                                   const char* table_name_next) {
     std::string pipeline(pipeline_name);

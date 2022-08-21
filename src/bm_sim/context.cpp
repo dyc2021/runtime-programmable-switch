@@ -169,6 +169,7 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
                                         const std::set<P4Objects::header_field_pair> &required_fields,
                                         const P4Objects::ForceArith &arith_objects) {
   p4objects_new = std::make_shared<P4Objects>(std::cout, true);
+  p4objects_new_list.push_back(p4objects_new);
   int status = p4objects_new->init_objects(json_file_stream, lookup_factory, device_id, cxt_id,
                                            notifications_transport,
                                            required_fields, arith_objects);

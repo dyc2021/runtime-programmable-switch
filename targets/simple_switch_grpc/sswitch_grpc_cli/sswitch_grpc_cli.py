@@ -242,7 +242,7 @@ class SSwitchGRPCCLI:
                 if not os.path.exists(parsed_command[2]):
                     raise P4RuntimeReconfigError("bmv2 JSON file not found: {}".format(parsed_command[2]))
                 # inject "flex_name" field
-                runtime_reconfig_tools.update_init_json_file(parsed_command[2])
+                runtime_reconfig_tools.update_init_forwarding_pipeline_json_file(init_forwarding_pipeline_json_file_path=parsed_command[2])
                 print("Installing p4 program on {} ...".format(self.cur_connection.bmv2_connection.name))
                 p4info_helper = p4runtime_lib.helper.P4InfoHelper(parsed_command[1])
                 self.cur_connection.bmv2_connection.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,

@@ -3,7 +3,7 @@ from typing_extensions import runtime
 import networkx as nx
 import json
 
-import sys
+import hashlib
 import ete3
 import os
 import shutil
@@ -21,11 +21,13 @@ def merge_and_compile(header_file_path: str, control_block_file_path: str, outpu
     control_block_name = control_block_str[control_block_str.find("control") + len("control") : control_block_str.find("(")].strip()
     
     merged_str = p4prototype.PROTOTYPE_STR % control_block_name
-    merged_str_hash_code = abs(hash(control_block_name + header_str + control_block_str)) % (10 ** 8)
-    output_folder_name = "header_" + \
+    hash_func = hashlib.new("sha256")
+    hash_func.update((header_str + control_block_str).encode())
+    merged_str_hash_code = int(hash_func.hexdigest(), base=16) % (10 ** 8)
+    output_folder_name = "header_<" + \
                             os.path.basename(header_file_path) + \
-                                "_control_block_" + os.path.basename(control_block_file_path) + \
-                                    "_" + str(merged_str_hash_code)
+                                ">_control_block_<" + os.path.basename(control_block_file_path) + \
+                                    ">_" + str(merged_str_hash_code)
     
     final_output_path = os.path.join(output_path, output_folder_name)
     os.makedirs(final_output_path, exist_ok=True)
@@ -302,9 +304,9 @@ class ProgramGraphManager:
 
 def update_merged_json_file(merged_json_file_path: str):
     with open(merged_json_file_path, "r") as f:
-            new_p4json = json.load(f)
+            merged_json = json.load(f)
 
-    pipelines = new_p4json["pipelines"]
+    pipelines = merged_json["pipelines"]
     for p in pipelines:
         if p["name"] == "ingress":
             ingress = p
@@ -322,13 +324,13 @@ def update_merged_json_file(merged_json_file_path: str):
 
     # update original json file
     with open(merged_json_file_path, "w") as f:
-        json.dump(fp=f, obj=new_p4json)
+        json.dump(fp=f, obj=merged_json)
 
-def update_init_json_file(new_config_json_file_path: str):
-    with open(new_config_json_file_path, "r") as f:
-            new_p4json = json.load(f)
+def update_init_forwarding_pipeline_json_file(init_forwarding_pipeline_json_file_path: str):
+    with open(init_forwarding_pipeline_json_file_path, "r") as f:
+            init_forwarding_pipeline_json = json.load(f)
 
-    pipelines = new_p4json["pipelines"]
+    pipelines = init_forwarding_pipeline_json["pipelines"]
     for p in pipelines:
         if p["name"] == "ingress":
             ingress = p
@@ -345,8 +347,43 @@ def update_init_json_file(new_config_json_file_path: str):
         raise P4RuntimeReconfigError("We don't support action_calls")
 
     # update original json file
-    with open(new_config_json_file_path, "w") as f:
-        json.dump(fp=f, obj=new_p4json)
+    with open(init_forwarding_pipeline_json_file_path, "w") as f:
+        json.dump(fp=f, obj=init_forwarding_pipeline_json)
+
+def generate_migrate_json_file(runtime_json_file_path: str) -> str:
+    with open(runtime_json_file_path, "r") as f:
+        runtime_json = json.load(f)
+    
+    pipelines = runtime_json["pipelines"]
+    for p in pipelines:
+        if p["name"] == "ingress":
+            ingress = p
+        if p["name"] == "egress":
+            egress = p
+
+    for t in ingress["table"]:
+        if "flex_name" in t:
+            t["flex_name"] = "new_"+"t%s" % t["name"]
+        else:
+            raise P4RuntimeReconfigError("Can't find flex name for table {} in the json file".format(t["name"]))
+    
+    for c in ingress["conditionals"]:
+        if "flex_name" in c:
+            if c["flex_name"][:4] != "flx_":
+                c["flex_name"] = "new_"+"c%s" % c["name"]
+        else:
+            raise P4RuntimeReconfigError("Can't find flex name for conditional {} in the json file".format(c["name"]))
+
+    if "action_calls" in ingress:
+        raise P4RuntimeReconfigError("We don't support action_calls")
+
+    parent_folder_path_of_runtime_json_file = os.path.dirname(runtime_json_file_path)
+    runtime_json_file_name = os.path.basename(runtime_json_file_path).split(".")[0]
+    migrate_json_file_path = os.path.join(parent_folder_path_of_runtime_json_file, runtime_json_file_name + "_migrate.json")
+
+    # generate a new json file
+    with open(migrate_json_file_path, "w") as f:
+        json.dump(fp=f, obj=runtime_json)
 
 def flex_name_to_human_readable_name(flex_name: str) -> str:
     # we assume flex_name is in the form of "old_<type>xxx" or "new_<type>xxx", <type> = 't' or 'c'

@@ -988,7 +988,8 @@ class SwitchWContexts : public DevMgr, public RuntimeInterface {
                                              cxt_id, 
                                              contexts.at(cxt_id).notifications_transport,
                                              required_fields,
-                                             arith_objects);
+                                             arith_objects,
+                                             true);
 
     if (status) return static_cast<int>(RuntimeReconfigErrorCode::P4OBJECTS_INIT_FAIL);
 

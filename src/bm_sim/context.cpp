@@ -172,7 +172,8 @@ Context::mt_runtime_reconfig_with_stream(std::istream* json_file_stream,
   p4objects_new_list.push_back(p4objects_new);
   int status = p4objects_new->init_objects(json_file_stream, lookup_factory, device_id, cxt_id,
                                            notifications_transport,
-                                           required_fields, arith_objects);
+                                           required_fields, arith_objects,
+                                           true);
   if (status) return RuntimeReconfigErrorCode::P4OBJECTS_INIT_FAIL;
   
   std::string line;

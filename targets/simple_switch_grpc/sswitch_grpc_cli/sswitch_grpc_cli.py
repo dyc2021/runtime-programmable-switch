@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
+
 import os
 import sys
 from typing import Dict, List
 import traceback
 import logging
-import time
+from datetime import datetime, timezone
 # import this module to prevent input() reading arrow keys
 import readline
 
@@ -143,12 +144,12 @@ class SSwitchGRPCConnection:
         self.bmv2_connection = p4runtime_lib.bmv2.Bmv2SwitchConnection(name=name, address=address, device_id=device_id, proto_dump_file=proto_dump_file)
         self.program_graph_manager = runtime_reconfig_tools.ProgramGraphManager()
         self.latest_config_json_path: str = None
+        self.already_init_p4objects_new = False
 
 class SSwitchGRPCCLI:
     def __init__(self) -> None:
         self.connections: Dict[str, SSwitchGRPCConnection] = dict() # { switch_name: SSwitchGRPCConnection }
         self.cur_connection: SSwitchGRPCConnection = None
-        self.program_graph_manager = runtime_reconfig_tools.ProgramGraphManager()
         os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
     def _read_user_input(self) -> str:
@@ -165,6 +166,7 @@ class SSwitchGRPCCLI:
         start_point, end_point = mount_point.split("->")
         start_point = runtime_reconfig_tools.human_readable_name_to_flex_name(start_point)
         end_point = runtime_reconfig_tools.human_readable_name_to_flex_name(end_point)
+
         install_func_commands = runtime_reconfig_tools.generate_install_func_commands(runtime_json_file_path=self.cur_connection.latest_config_json_path,
                                                                                       merged_json_file_path=merged_json_file_path,
                                                                                       start_point=start_point,
@@ -175,9 +177,9 @@ class SSwitchGRPCCLI:
             print("\t" + command)
         
         for i, command in enumerate(install_func_commands):
-            print("Execute command [{}]: {}".format(i, command))
+            print("Execute command [install_func: {}]: {}".format(i, command))
             self._exec_one_command(command=command)
-            print("Finish running command [{}]: {}".format(i, command))
+            print("Finish running command [install_func: {}]: {}".format(i, command))
 
     def _uninstall_func(self, mount_point_number: int):
         uninstall_func_commands = runtime_reconfig_tools.generate_uninstall_func_commands(runtime_json_file_path=self.cur_connection.latest_config_json_path,
@@ -187,16 +189,50 @@ class SSwitchGRPCCLI:
             print("\t" + command)
         
         for i, command in enumerate(uninstall_func_commands):
-            print("Execute command [{}]: {}".format(i, command))
+            print("Execute command [uninstall_func: {}]: {}".format(i, command))
             self._exec_one_command(command=command)
-            print("Finish running command [{}]: {}".format(i, command))
+            print("Finish running command [uninstall_func: {}]: {}".format(i, command))
+
+    def _migrate_func(self, 
+                      mount_point_number_in_this_switch: int, 
+                      another_switch_name: str,
+                      mount_point_for_another_switch: str,
+                      mount_point_number_for_another_switch: int):
+        migrate_json_file_path = runtime_reconfig_tools.generate_migrate_json_file(runtime_json_file_path=self.cur_connection.latest_config_json_path)
+
+        if len(mount_point_for_another_switch.split("->")) != 2:
+            raise P4RuntimeReconfigError("Parsing mount point fails, mount point is: {}".format(mount_point_for_another_switch))
+        start_point, end_point = mount_point_for_another_switch.split("->")
+        start_point = runtime_reconfig_tools.human_readable_name_to_flex_name(start_point)
+        end_point = runtime_reconfig_tools.human_readable_name_to_flex_name(end_point)
+
+        migrate_func_commands = runtime_reconfig_tools.generate_migrate_func_commands(s0_name=self.cur_connection.bmv2_connection.name,
+                                                                                      s0_migrate_json_file_path=migrate_json_file_path,
+                                                                                      s0_func_mount_point_number=mount_point_number_in_this_switch,
+                                                                                      s1_name=another_switch_name,
+                                                                                      s1_runtime_json_file_path=self.connections[another_switch_name].latest_config_json_path,
+                                                                                      s1_start_point=start_point,
+                                                                                      s1_end_point=end_point,
+                                                                                      s1_func_mount_point_number=mount_point_number_for_another_switch)
+
+        print("migrate func commands: ")
+        for command in migrate_func_commands:
+            print("\t" + command)
+        
+        for i, command in enumerate(migrate_func_commands):
+            print("Execute command [migrate_func: {}]: {}".format(i, command))
+            self._exec_one_command(command=command)
+            print("Finish running command [migrate_func: {}]: {}".format(i, command))
 
     def _exec_one_command(self, command: str):
         parsed_command = command.split()
+        # h or help
         if len(parsed_command) == 1 and (parsed_command[0] == "h" or parsed_command[0] == "help"):
             print(HELP_MESSAGE)
+        # detailed_help
         elif len(parsed_command) == 1 and parsed_command[0] == "detailed_help":
             print(DETAILED_HELP_MESSAGE)
+        # list_switches
         elif len(parsed_command) == 1 and parsed_command[0] == "list_switches":
             if len(self.connections) != 0:
                 for connection_name, connection in self.connections.items():
@@ -207,6 +243,7 @@ class SSwitchGRPCCLI:
                                                                                             connection.bmv2_connection.proto_dump_file))
             else:
                 raise P4RuntimeReconfigWarning("CLI doesn't connect to any switch")
+        # show_program_graph
         elif len(parsed_command) == 1 and parsed_command[0] == "show_program_graph":
             if self.cur_connection is None:
                 raise P4RuntimeReconfigWarning("CLI doesn't connect to any switch")
@@ -217,70 +254,113 @@ class SSwitchGRPCCLI:
                     runtime_reconfig_tools.display_graph_in_command_line(self.cur_connection.program_graph_manager.cur_graph)
                 else:
                     runtime_reconfig_tools.display_graph_using_matplotlib(self.cur_connection.program_graph_manager.cur_graph)
+        # connect <switch_name_given_by_yourself> <switch_address> <device_id> 
+        # connect <switch_name_given_by_yourself>
         elif parsed_command[0] == "connect" and (len(parsed_command) == 2 or len(parsed_command) == 4):
+            # connect <switch_name_given_by_yourself>
             if len(parsed_command) == 2:
-                if parsed_command[1] in self.connections:
-                    self.cur_connection = self.connections[parsed_command[1]]
+                switch_name_given_by_your_self = parsed_command[1]
+                if switch_name_given_by_your_self in self.connections:
+                    self.cur_connection = self.connections[switch_name_given_by_your_self]
                 else:
-                    raise P4RuntimeReconfigWarning("Can't find connection whose name is {}".format(parsed_command[1]))
+                    raise P4RuntimeReconfigWarning("Can't find connection whose name is {}".format(switch_name_given_by_your_self))
+            # connect <switch_name_given_by_yourself> <switch_address> <device_id> 
             else:
                 print("Connecting ...")
-                connection = SSwitchGRPCConnection(name=parsed_command[1],
-                                                    address=parsed_command[2],
-                                                    device_id=int(parsed_command[3]),
-                                                    proto_dump_file="{}/{}_p4runtime_requests.txt".format(OUTPUT_FOLDER, parsed_command[1]))
+                switch_name_given_by_your_self = parsed_command[1]
+                switch_address = parsed_command[2]
+                device_id = int(parsed_command[3])
+                connection = SSwitchGRPCConnection(name=switch_name_given_by_your_self,
+                                                    address=switch_address,
+                                                    device_id=device_id,
+                                                    proto_dump_file="{}/{}_p4runtime_requests.txt".format(OUTPUT_FOLDER, switch_name_given_by_your_self))
                 connection.bmv2_connection.MasterArbitrationUpdate()
-                self.connections[parsed_command[1]] = connection
+                self.connections[switch_name_given_by_your_self] = connection
                 self.cur_connection = connection
                 print("Connect successfully")
+        # set_forwarding_pipeline_config <p4info_path> <bmv2_json_path>
         elif parsed_command[0] == "set_forwarding_pipeline_config" and len(parsed_command) == 3:
             if self.cur_connection is None:
                 raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now, please use `connect` command before running `set_forwarding_pipeline_config`")
             else:
-                if not os.path.exists(parsed_command[1]):
-                    raise P4RuntimeReconfigError("p4info file not found: {}".format(parsed_command[1]))
-                if not os.path.exists(parsed_command[2]):
-                    raise P4RuntimeReconfigError("bmv2 JSON file not found: {}".format(parsed_command[2]))
+                p4info_path = parsed_command[1]
+                bmv2_json_path = parsed_command[2]
+                if not os.path.exists(p4info_path):
+                    raise P4RuntimeReconfigError("p4info file not found: {}".format(p4info_path))
+                if not os.path.exists(bmv2_json_path):
+                    raise P4RuntimeReconfigError("bmv2 JSON file not found: {}".format(bmv2_json_path))
                 # inject "flex_name" field
-                runtime_reconfig_tools.update_init_forwarding_pipeline_json_file(init_forwarding_pipeline_json_file_path=parsed_command[2])
+                runtime_reconfig_tools.update_init_forwarding_pipeline_json_file(init_forwarding_pipeline_json_file_path=bmv2_json_path)
                 print("Installing p4 program on {} ...".format(self.cur_connection.bmv2_connection.name))
-                p4info_helper = p4runtime_lib.helper.P4InfoHelper(parsed_command[1])
+                p4info_helper = p4runtime_lib.helper.P4InfoHelper(p4info_path)
                 self.cur_connection.bmv2_connection.SetForwardingPipelineConfig(p4info=p4info_helper.p4info,
-                                                                                bmv2_json_file_path=parsed_command[2])
-                self.cur_connection.latest_config_json_path = parsed_command[2]
-                self.cur_connection.program_graph_manager.update_graph(new_config_json_file_path=parsed_command[2])
+                                                                                bmv2_json_file_path=bmv2_json_path)
+                self.cur_connection.latest_config_json_path = bmv2_json_path
+                self.cur_connection.program_graph_manager.update_graph(new_config_json_file_path=bmv2_json_path)
                 print("Install successfully")
+        # install_func <func_p4_header_file_path> <func_p4_control_block_file_path> <mount_point> <mount_point_number>
         elif parsed_command[0] == "install_func" and len(parsed_command) == 5:
             if self.cur_connection is None:
                 raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now")
             else:
+                func_p4_header_file_path = parsed_command[1]
+                func_p4_control_block_file_path = parsed_command[2]
+                mount_point = parsed_command[3]
+                mount_point_number = int(parsed_command[4])
                 if self.cur_connection.latest_config_json_path is None:
                     raise P4RuntimeReconfigWarning("The switch hasn't been initiated please use `set_forwarding_pipeline_config` command")
-                if not os.path.exists(parsed_command[1]):
-                    raise P4RuntimeReconfigError("p4 header file not found: {}".format(parsed_command[1]))
-                if not os.path.exists(parsed_command[2]):
-                    raise P4RuntimeReconfigError("Control block file not found: {}".format(parsed_command[2]))
-                if int(parsed_command[4]) < 0 or int(parsed_command[4]) >= 128:
-                    raise P4RuntimeReconfigError("Mount point number should be in range [0, 128)")
+                if not os.path.exists(func_p4_header_file_path):
+                    raise P4RuntimeReconfigError("p4 header file not found: {}".format(func_p4_header_file_path))
+                if not os.path.exists(func_p4_control_block_file_path):
+                    raise P4RuntimeReconfigError("Control block file not found: {}".format(func_p4_control_block_file_path))
+                if mount_point_number < 0 or mount_point_number >= 128:
+                    raise P4RuntimeReconfigWarning("Mount point number should be in range [0, 128)")
             print("Installing function ...")
-            self._install_func(func_p4_header_file_path=parsed_command[1],
-                               func_p4_control_block_file_path=parsed_command[2],
-                               mount_point=parsed_command[3],
-                               mount_point_number=int(parsed_command[4]))
+            self._install_func(func_p4_header_file_path=func_p4_header_file_path,
+                               func_p4_control_block_file_path=func_p4_control_block_file_path,
+                               mount_point=mount_point,
+                               mount_point_number=mount_point_number)
             print("Install successfully")
+        # uninstall_func <mount_point_number>
         elif parsed_command[0] == "uninstall_func" and len(parsed_command) == 2:
             if self.cur_connection is None:
                 raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now")
             else:
+                mount_point_number = int(parsed_command[1])
                 if self.cur_connection.latest_config_json_path is None:
                     raise P4RuntimeReconfigWarning("The switch hasn't been initiated please use `set_forwarding_pipeline_config` command")
-                if int(parsed_command[1]) < 0 or int(parsed_command[1]) >= 128:
-                    raise P4RuntimeReconfigError("Mount point number should be in range [0, 128)")
+                if not self.cur_connection.already_init_p4objects_new:
+                    raise P4RuntimeReconfigWarning("p4objects_new has not been initialized for this switch, you should init it before doing runtime reconfig")
+                if mount_point_number < 0 or mount_point_number >= 128:
+                    raise P4RuntimeReconfigWarning("Mount point number should be in range [0, 128)")
             print("Uninstalling function ...")
-            self._uninstall_func(mount_point_number=int(parsed_command[1]))
+            self._uninstall_func(mount_point_number=mount_point_number)
             print("Uninstall successfully")
+        # migrate_func <mount_point_number_in_this_switch> <another_switch_name> <mount_point_for_another_switch> <mount_point_number_for_another_switch>
         elif parsed_command[0] == "migrate_func" and len(parsed_command) == 5:
-            raise P4RuntimeReconfigWarning("We now don't support migrate_func")
+            if self.cur_connection is None:
+                raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now")
+            else:
+                mount_point_number_in_this_switch = int(parsed_command[1])
+                another_switch_name = parsed_command[2]
+                mount_point_for_another_switch = parsed_command[3]
+                mount_point_number_for_another_switch = int(parsed_command[4])
+                if another_switch_name not in self.connections:
+                    raise P4RuntimeReconfigWarning("Can't find the connection to switch {}".format(another_switch_name))
+                if self.cur_connection.latest_config_json_path is None or \
+                     self.connections[another_switch_name].latest_config_json_path is None:
+                     raise P4RuntimeReconfigWarning("One switch hasn't been initiated please use `set_forwarding_pipeline_config` command")
+                if mount_point_number_in_this_switch < 0 or mount_point_number_in_this_switch >= 128:
+                    raise P4RuntimeReconfigWarning("Mount point number should be in range [0, 128)")
+                if mount_point_number_for_another_switch < 0 or mount_point_number_for_another_switch >= 128:
+                    raise P4RuntimeReconfigWarning("Mount point number should be in range [0, 128)")
+                print("Migrating function ...")
+                self._migrate_func(mount_point_number_in_this_switch=mount_point_number_in_this_switch,
+                                   another_switch_name=another_switch_name,
+                                   mount_point_for_another_switch=mount_point_for_another_switch,
+                                   mount_point_number_for_another_switch=mount_point_number_for_another_switch)
+                print("Migrate successfully")
+        # runtime reconfig commands
         else:
             if self.cur_connection is None:
                 raise P4RuntimeReconfigWarning("This CLI doesn't connect to any switch now, please use `connect` command")
@@ -288,22 +368,28 @@ class SSwitchGRPCCLI:
                 if self.cur_connection.latest_config_json_path is None:
                     raise P4RuntimeReconfigWarning("The switch hasn't been initiated please use `set_forwarding_pipeline_config` command")
                 try:
-                    parsed_command = RuntimeReconfigCommandParser(command)
+                    parsed_runtime_reconfig_command = RuntimeReconfigCommandParser(command)
                 except P4RuntimeReconfigError:
                     raise P4RuntimeReconfigWarning("Invalid command, please enter again")
 
+                if parsed_runtime_reconfig_command.action != "init_p4objects_new" and not self.cur_connection.already_init_p4objects_new:
+                    raise P4RuntimeReconfigWarning("p4objects_new has not been initialized for this switch, you should init it before doing runtime reconfig")
+
                 print("Runtime reconfigurating ...")
-                response = self.cur_connection.bmv2_connection.RuntimeReconfig(parsed_cmd=parsed_command)
+                response = self.cur_connection.bmv2_connection.RuntimeReconfig(parsed_cmd=parsed_runtime_reconfig_command)
                 # we expect the returned json is a string
                 returned_json = response.p4objects_json_entry.p4objects_json
                 if not isinstance(returned_json, str):
                     raise P4RuntimeReconfigError("Returned json is not a string")
-                returned_json_file_path = os.path.join(OUTPUT_FOLDER, "returned_json_{}.json".format(time.time()))
+                returned_json_file_path = os.path.join(OUTPUT_FOLDER, "returned_json_{}.json".format(datetime.now(timezone.utc).strftime("%d_%b_%Y_%H_%M_%S_%f")))
                 with open(returned_json_file_path, "w") as returned_json_file:
                     returned_json_file.write(returned_json)
                 self.cur_connection.latest_config_json_path = returned_json_file_path
                 self.cur_connection.program_graph_manager.update_graph(new_config_json_file_path=returned_json_file_path)
                 print("Runtime reconfiguration ends")
+
+                if parsed_runtime_reconfig_command.action == "init_p4objects_new":
+                    self.cur_connection.already_init_p4objects_new = True
 
     def exec_script(self, commands: List[str]):
         get_error = False

@@ -118,7 +118,6 @@ class SwitchConnection(object):
         self.p4info = None
         self.channel = grpc.insecure_channel(self.address)
         self.proto_dump_file = proto_dump_file
-        self.already_init_p4objects_new = False
         if proto_dump_file is not None:
             interceptor = GrpcRequestLogger(proto_dump_file)
             self.channel = grpc.intercept_channel(self.channel, interceptor)
@@ -237,9 +236,6 @@ class SwitchConnection(object):
         runtime_reconfig_entry = update.entity.runtime_reconfig_entry
         runtime_reconfig_content = runtime_reconfig_entry.runtime_reconfig_content
 
-        if parsed_cmd.action != "init_p4objects_new" and not self.already_init_p4objects_new:
-            raise P4RuntimeReconfigError("p4objects_new has not been initialized for this switch, you should init it before doing runtime reconfig")
-
         if parsed_cmd.action == "init_p4objects_new":
             runtime_reconfig_entry.runtime_reconfig_type = p4runtime_pb2.RuntimeReconfigEntry.INIT_P4OBJECTS_NEW
             p4objects_new_json_path = parsed_cmd.action_arguments[0]
@@ -330,8 +326,6 @@ class SwitchConnection(object):
         else:
             print("Send P4Runtime Reconfig Request: \n", request)
             response = self.client_stub.Write(request)
-            if parsed_cmd.action == "init_p4objects_new":
-                self.already_init_p4objects_new = True
 
         return response
 

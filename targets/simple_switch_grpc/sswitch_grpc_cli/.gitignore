@@ -3,3 +3,6 @@
 
 # cli output files
 sswitch_grpc_cli_output/
+
+# pycache
+__pycache__/

@@ -2222,7 +2222,8 @@ P4Objects::init_objects(std::istream *is,
                         device_id_t device_id, cxt_id_t cxt_id,
                         std::shared_ptr<TransportIface> notifications_transport,
                         const std::set<header_field_pair> &required_fields,
-                        const ForceArith &arith_objects) {
+                        const ForceArith &arith_objects,
+                        bool is_p4objects_new) {
   tableIdCount = 0;
   actionIdCount = 0;
   conditionalIdCount = 0;
@@ -2231,7 +2232,9 @@ P4Objects::init_objects(std::istream *is,
   Json::Value* cfg_root = new Json::Value();
   (*is) >> (*cfg_root);
 
-  prepare_flex_hdr_parser(*cfg_root);
+  if (!is_p4objects_new) {
+    prepare_flex_hdr_parser(*cfg_root);
+  }
 
   this->cfg_root = cfg_root;
 
@@ -3516,7 +3519,9 @@ P4Objects::insert_flex_rt(const std::string &pipeline_name,
     conditionalIdCount = conditionals_map.size();
   }
   p4object_id_t conditional_id = conditionalIdCount++;
-  std::string conditional_name = "$TE_";
+  // please note that in "init_pipelines()", there is a function stoi(conditional_name.substr(5))
+  // if we use "$TE_xx", there will be an error during initiating pipelines
+  std::string conditional_name = "$TE__";
   conditional_name += std::to_string(++conditionalNameMax);
   dup_id_checker_condition.add(conditional_id);
 

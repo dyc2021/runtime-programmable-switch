@@ -105,7 +105,8 @@ class P4Objects {
                    std::shared_ptr<TransportIface> transport = nullptr,
                    const std::set<header_field_pair> &required_fields =
                      std::set<header_field_pair>(),
-                   const ForceArith &arith_objects = ForceArith());
+                   const ForceArith &arith_objects = ForceArith(),
+                   bool is_p4objects_new = false);
 
   P4Objects(const P4Objects &other) = delete;
   P4Objects &operator=(const P4Objects &) = delete;

@@ -24,10 +24,10 @@ def merge_and_compile(header_file_path: str, control_block_file_path: str, outpu
     hash_func = hashlib.new("sha256")
     hash_func.update((header_str + control_block_str).encode())
     merged_str_hash_code = int(hash_func.hexdigest(), base=16) % (10 ** 8)
-    output_folder_name = "header_<" + \
+    output_folder_name = "header-" + \
                             os.path.basename(header_file_path) + \
-                                ">_control_block_<" + os.path.basename(control_block_file_path) + \
-                                    ">_" + str(merged_str_hash_code)
+                                "-control_block-" + os.path.basename(control_block_file_path) + \
+                                    "-" + str(merged_str_hash_code)
     
     final_output_path = os.path.join(output_path, output_folder_name)
     os.makedirs(final_output_path, exist_ok=True)
@@ -36,7 +36,9 @@ def merge_and_compile(header_file_path: str, control_block_file_path: str, outpu
     merged_file_path = os.path.join(final_output_path, "merged.p4")
     with open(merged_file_path, "w") as merged_file:
         merged_file.write(merged_str)
-    compile_return_code = os.system("p4c --arch v1model --target bmv2 -o {} {}".format(final_output_path, merged_file_path))
+    p4c_compile_command = "p4c --arch v1model --target bmv2 -o {} {}".format(final_output_path, merged_file_path)
+    print(p4c_compile_command)
+    compile_return_code = os.system(p4c_compile_command)
     if compile_return_code != 0:
         raise P4RuntimeReconfigError("Compiling p4 merged file fails")
 
@@ -170,6 +172,7 @@ def generate_uninstall_func_commands(runtime_json_file_path: str, mount_point_nu
     # trigger off
     uninstall_func_commands.append("trigger off {}".format(mount_point_number))
 
+    # find nodes to be deleted
     if len(runtime_graph[flex_func_mount_point_branch_name]) != 2:
         raise P4RuntimeReconfigError("flex_func_mount_point_branch doesn't have two edges")
     true_next_node = None
@@ -184,13 +187,12 @@ def generate_uninstall_func_commands(runtime_json_file_path: str, mount_point_nu
     processed_true_next_node_name = eliminate_type_letter_in_name(true_next_node)
     processed_false_next_node_name = eliminate_type_letter_in_name(false_next_node) if false_next_node != "old_s" else "null"
     
-    # delete nodes
     nodes_to_be_deleted = set()
     for path in list(nx.all_simple_paths(runtime_graph, source=true_next_node, target=false_next_node)):
         nodes_to_be_deleted.update(path)
-
     nodes_to_be_deleted.remove(false_next_node)
 
+    # delete nodes
     for node in nodes_to_be_deleted:
         node_type = type_letter_to_type(node[4])
         processed_node_name = eliminate_type_letter_in_name(node)
@@ -217,6 +219,129 @@ def generate_uninstall_func_commands(runtime_json_file_path: str, mount_point_nu
     uninstall_func_commands.append("delete flex ingress {}".format(flex_func_mount_point_branch_name))
 
     return uninstall_func_commands
+
+def generate_migrate_func_commands(s0_name: str,
+                                   s0_migrate_json_file_path: str,
+                                   s0_func_mount_point_number: int,
+                                   s1_name: str,
+                                   s1_runtime_json_file_path: str,
+                                   s1_start_point: str,
+                                   s1_end_point: str,
+                                   s1_func_mount_point_number: int) -> List[str]:
+    s0_migrate_json_graph = generate_graph(s0_migrate_json_file_path)
+    s1_runtime_graph = generate_graph(s1_runtime_json_file_path)
+    s0_flex_func_mount_point_branch_name = "flx_flex_func_mount_point_number_${}$".format(s0_func_mount_point_number)
+    s1_flex_func_mount_point_branch_name = "flx_flex_func_mount_point_number_${}$".format(s1_func_mount_point_number)
+
+    migrate_func_commands = []
+
+    # connect to s1
+    migrate_func_commands.append("connect {}".format(s1_name))
+
+    # reinit s1's p4objects_new using the s0_migrate_json_file (generated from s0's runtime json)
+    migrate_func_commands.append("init_p4objects_new {}".format(s0_migrate_json_file_path))
+
+    # get the connection types between s1's start point and end point
+    s1_start_point_to_end_point_connection_types = []
+    s1_start_point_to_end_point_connection_types_number = len(s1_runtime_graph[s1_start_point][s1_end_point])
+    for i in range(s1_start_point_to_end_point_connection_types_number):
+        s1_start_point_to_end_point_connection_types.append(s1_runtime_graph[s1_start_point][s1_end_point][i]["type"])
+
+    # inject s1_flex_func_mount_point_branch
+    migrate_func_commands.append("insert flex ingress {} null null".format(s1_flex_func_mount_point_branch_name))
+
+    # find the tables/conditionals to be added (these components are in s0_migrate_json_graph)
+    if len(s0_migrate_json_graph[s0_flex_func_mount_point_branch_name]) != 2:
+        raise P4RuntimeReconfigError("s0_flex_func_mount_point_branch doesn't have two edges")
+    true_next_node = None
+    false_next_node = None
+    for neightbor in s0_migrate_json_graph[s0_flex_func_mount_point_branch_name]:
+        edge_type = s0_migrate_json_graph[s0_flex_func_mount_point_branch_name][neightbor][0]["type"]
+        if edge_type == "true_next":
+            true_next_node = neightbor
+        elif edge_type == "false_next":
+            false_next_node = neightbor
+
+    processed_true_next_node_name = eliminate_type_letter_in_name(true_next_node)
+    processed_false_next_node_name = eliminate_type_letter_in_name(false_next_node) if false_next_node != "old_s" else "null"
+    
+    nodes_to_be_added = set()
+    for path in list(nx.all_simple_paths(s0_migrate_json_graph, source=true_next_node, target=false_next_node)):
+        nodes_to_be_added.update(path)
+    nodes_to_be_added.remove(false_next_node)
+
+    # add nodes
+    for node in nodes_to_be_added:
+        node_type = type_letter_to_type(node[4])
+        processed_node_name = eliminate_type_letter_in_name(node)
+        migrate_func_commands.append("insert {} ingress {}".format(node_type, processed_node_name))
+
+    # a subgraph containing the nodes to be added
+    s0_migrate_json_subgraph: nx.MultiDiGraph = s0_migrate_json_graph.subgraph(nodes_to_be_added)
+
+    # add edges between these nodes
+    control_block_end_nodes = [] # [ (end_node, end_edge_type) ]
+    uv_dict = dict() # { (u, v): occur_times }
+    for u, v in s0_migrate_json_subgraph.edges():
+        if (u, v) in uv_dict:
+            uv_dict[(u, v)] += 1
+        else:
+            uv_dict[(u, v)] = 0
+
+        edge_type = s0_migrate_json_subgraph[u][v][uv_dict[(u, v)]]["type"]
+
+        u_type = type_letter_to_type(u[4])
+
+        processed_u_name = eliminate_type_letter_in_name(u)
+        processed_v_name = eliminate_type_letter_in_name(v) if v != "old_s" else "null"
+        if v == "old_s":
+            end_edge_type = s0_migrate_json_subgraph[u]["old_s"][uv_dict[(u, v)]]["type"]
+            control_block_end_nodes.append((u, end_edge_type))
+            continue
+        migrate_func_commands.append("change {} ingress {} {} {}".format(u_type, 
+                                                                         processed_u_name, 
+                                                                         edge_type, 
+                                                                         processed_v_name))
+    
+    # connect control block's end nodes to s1_end_point
+    for end_node, end_edge_type in control_block_end_nodes:
+        end_node_type = type_letter_to_type(end_node[4])
+        processed_end_node_name = eliminate_type_letter_in_name(end_node)
+        processed_end_point_name = eliminate_type_letter_in_name(s1_end_point) if s1_end_point != "old_s" else "null"
+        migrate_func_commands.append("change {} ingress {} {} {}".format(end_node_type,
+                                                                         processed_end_node_name,
+                                                                         end_edge_type,
+                                                                         processed_end_point_name))
+
+    # connect s1_flex_func_mount_point_branch and s1_end_point
+    processed_end_point_name = eliminate_type_letter_in_name(s1_end_point) if s1_end_point != "old_s" else "null"
+    migrate_func_commands.append("change flex ingress {} false_next {}".format(s1_flex_func_mount_point_branch_name,
+                                                                               processed_end_point_name))
+
+    # connect s1_flex_func_mount_point_branch and control block's first node
+    processed_control_block_first_node_name = processed_true_next_node_name
+    migrate_func_commands.append("change flex ingress {} true_next {}".format(s1_flex_func_mount_point_branch_name,
+                                                                              processed_control_block_first_node_name))
+
+    # connect s1_start_point and s1_flex_func_mount_point_branch
+    if s1_start_point != "old_r":
+        for start_point_to_end_point_connection_type in s1_start_point_to_end_point_connection_types:
+            start_point_type = type_letter_to_type(s1_start_point[4])
+            processed_start_point_name = eliminate_type_letter_in_name(s1_start_point)
+            migrate_func_commands.append("change {} ingress {} {} {}".format(start_point_type, 
+                                                                            processed_start_point_name,
+                                                                            start_point_to_end_point_connection_type,
+                                                                            s1_flex_func_mount_point_branch_name))
+    else:
+        migrate_func_commands.append("change init ingress {}".format(s1_flex_func_mount_point_branch_name))
+
+    # trigger mount point
+    migrate_func_commands.append("trigger on {}".format(s1_func_mount_point_number))
+
+    # connect to original switch
+    migrate_func_commands.append("connect {}".format(s0_name))
+
+    return migrate_func_commands
 
 # adapted from FlexCore (https://github.com/jiarong0907/FlexCore)
 def generate_graph(json_file_path) -> nx.MultiDiGraph:
@@ -324,7 +449,7 @@ def update_merged_json_file(merged_json_file_path: str):
 
     # update original json file
     with open(merged_json_file_path, "w") as f:
-        json.dump(fp=f, obj=merged_json)
+        json.dump(fp=f, obj=merged_json, indent=4, sort_keys=True)
 
 def update_init_forwarding_pipeline_json_file(init_forwarding_pipeline_json_file_path: str):
     with open(init_forwarding_pipeline_json_file_path, "r") as f:
@@ -348,7 +473,7 @@ def update_init_forwarding_pipeline_json_file(init_forwarding_pipeline_json_file
 
     # update original json file
     with open(init_forwarding_pipeline_json_file_path, "w") as f:
-        json.dump(fp=f, obj=init_forwarding_pipeline_json)
+        json.dump(fp=f, obj=init_forwarding_pipeline_json, indent=4, sort_keys=True)
 
 def generate_migrate_json_file(runtime_json_file_path: str) -> str:
     with open(runtime_json_file_path, "r") as f:
@@ -361,7 +486,7 @@ def generate_migrate_json_file(runtime_json_file_path: str) -> str:
         if p["name"] == "egress":
             egress = p
 
-    for t in ingress["table"]:
+    for t in ingress["tables"]:
         if "flex_name" in t:
             t["flex_name"] = "new_"+"t%s" % t["name"]
         else:
@@ -383,7 +508,9 @@ def generate_migrate_json_file(runtime_json_file_path: str) -> str:
 
     # generate a new json file
     with open(migrate_json_file_path, "w") as f:
-        json.dump(fp=f, obj=runtime_json)
+        json.dump(fp=f, obj=runtime_json, indent=4, sort_keys=True)
+
+    return migrate_json_file_path
 
 def flex_name_to_human_readable_name(flex_name: str) -> str:
     # we assume flex_name is in the form of "old_<type>xxx" or "new_<type>xxx", <type> = 't' or 'c'

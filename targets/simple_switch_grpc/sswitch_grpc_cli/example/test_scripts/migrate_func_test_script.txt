@@ -1,0 +1,14 @@
+connect s1 localhost:50051 0
+connect s2 localhost:50052 1
+connect s1
+set_forwarding_pipeline_config ./example/build/multi_tenant_without_acl.p4.p4info.txt ./example/build/multi_tenant_without_acl.json
+show_program_graph
+install_func ./example/new_program/multi_tenant_with_acl_header.p4 ./example/new_program/multi_tenant_with_acl_control_block.p4 table[old_MyIngress.ipv4_lpm]->[sink] 55
+show_program_graph
+connect s2
+set_forwarding_pipeline_config ./example/build/multi_tenant_without_acl.p4.p4info.txt ./example/build/multi_tenant_without_acl.json
+show_program_graph
+connect s1
+migrate_func 55 s2 table[old_MyIngress.ipv4_lpm]->[sink] 66
+connect s2
+show_program_graph

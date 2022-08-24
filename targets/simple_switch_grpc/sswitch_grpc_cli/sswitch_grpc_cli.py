@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import json
 import os
 import sys
 from typing import Dict, List
@@ -237,7 +238,6 @@ class SSwitchGRPCCLI:
             if len(self.connections) != 0:
                 for connection_name, connection in self.connections.items():
                     print("connection [{}]: address: {}, device_id: {}, log_file: {}".format(connection_name, 
-                                                                                            connection.bmv2_connection.name, 
                                                                                             connection.bmv2_connection.address, 
                                                                                             connection.bmv2_connection.device_id, 
                                                                                             connection.bmv2_connection.proto_dump_file))
@@ -381,9 +381,11 @@ class SSwitchGRPCCLI:
                 returned_json = response.p4objects_json_entry.p4objects_json
                 if not isinstance(returned_json, str):
                     raise P4RuntimeReconfigError("Returned json is not a string")
-                returned_json_file_path = os.path.join(OUTPUT_FOLDER, "returned_json_{}.json".format(datetime.now(timezone.utc).strftime("%d_%b_%Y_%H_%M_%S_%f")))
+                returned_json_file_path = os.path.join(OUTPUT_FOLDER, "{}_returned_json_{}.json".format(self.cur_connection.bmv2_connection.name,
+                                                                                                        datetime.now(timezone.utc).strftime("%d_%b_%Y_%H_%M_%S_%f")))
                 with open(returned_json_file_path, "w") as returned_json_file:
-                    returned_json_file.write(returned_json)
+                    returned_json_object = json.loads(returned_json)
+                    json.dump(fp=returned_json_file, obj=returned_json_object, indent=4, sort_keys=True)
                 self.cur_connection.latest_config_json_path = returned_json_file_path
                 self.cur_connection.program_graph_manager.update_graph(new_config_json_file_path=returned_json_file_path)
                 print("Runtime reconfiguration ends")
